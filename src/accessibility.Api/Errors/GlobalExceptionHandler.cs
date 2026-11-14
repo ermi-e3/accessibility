@@ -31,6 +31,18 @@ public sealed class GlobalExceptionHandler(
                 (StatusCodes.Status409Conflict, "ConflictErrorTitle", "STATE_CONFLICT"),
             StorageUnavailableException =>
                 (StatusCodes.Status503ServiceUnavailable, "StorageUnavailableTitle", "STORAGE_UNAVAILABLE"),
+            ProcessorUnavailableException processorUnavailable =>
+                (StatusCodes.Status503ServiceUnavailable, "ProcessorUnavailableTitle", processorUnavailable.Code),
+            FileTooLargeException fileTooLarge =>
+                (StatusCodes.Status413PayloadTooLarge, "FileTooLargeTitle", fileTooLarge.Code),
+            UnsupportedFileTypeException unsupported =>
+                (StatusCodes.Status415UnsupportedMediaType, "UnsupportedFileTitle", unsupported.Code),
+            ContentTypeMismatchException mismatch =>
+                (StatusCodes.Status415UnsupportedMediaType, "UnsupportedFileTitle", mismatch.Code),
+            FileContentInvalidException invalidFile =>
+                (StatusCodes.Status422UnprocessableEntity, "InvalidFileTitle", invalidFile.Code),
+            DuplicateActiveResourceException duplicate =>
+                (StatusCodes.Status409Conflict, "ConflictErrorTitle", duplicate.Code),
             UnauthorizedAccessException =>
                 (StatusCodes.Status403Forbidden, "ForbiddenErrorTitle", "FORBIDDEN"),
             _ =>

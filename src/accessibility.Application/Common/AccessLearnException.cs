@@ -45,3 +45,51 @@ public sealed class StorageUnavailableException : AccessLearnException
     {
     }
 }
+
+public sealed class FileTooLargeException : AccessLearnException
+{
+    public FileTooLargeException(long maximumBytes)
+        : base("FILE_TOO_LARGE", $"The upload exceeds the maximum of {maximumBytes} bytes.")
+    {
+    }
+}
+
+public sealed class UnsupportedFileTypeException : AccessLearnException
+{
+    public UnsupportedFileTypeException(string message)
+        : base("UNSUPPORTED_FILE_TYPE", message)
+    {
+    }
+}
+
+public sealed class ContentTypeMismatchException : AccessLearnException
+{
+    public ContentTypeMismatchException(string message)
+        : base("CONTENT_TYPE_MISMATCH", message)
+    {
+    }
+}
+
+public sealed class FileContentInvalidException : AccessLearnException
+{
+    public FileContentInvalidException(string message)
+        : base("FILE_CONTENT_INVALID", message)
+    {
+    }
+}
+
+public sealed class ProcessorUnavailableException : AccessLearnException
+{
+    public ProcessorUnavailableException(string message, Exception? innerException = null)
+        : base("PROCESSOR_UNAVAILABLE", message, innerException)
+    {
+    }
+}
+
+public sealed class DuplicateActiveResourceException : AccessLearnException
+{
+    public DuplicateActiveResourceException(string message)
+        : base("DUPLICATE_ACTIVE_RESOURCE", message)
+    {
+    }
+}

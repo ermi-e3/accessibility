@@ -1,12 +1,16 @@
 using Accessibility.Application.Abstractions;
 using Accessibility.Application.Authorization;
+using Accessibility.Application.Features.Lessons;
+using Accessibility.Infrastructure.Authorization;
 using Accessibility.Infrastructure.Health;
 using Accessibility.Infrastructure.Identity;
 using Accessibility.Infrastructure.Persistence;
+using Accessibility.Infrastructure.Processing;
 using Accessibility.Infrastructure.Storage;
 using Amazon.Runtime;
 using Amazon.S3;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -95,7 +99,53 @@ public static class DependencyInjection
                 policy => policy.RequireRole(AccessLearnRoles.Educator, AccessLearnRoles.Administrator))
             .AddPolicy(
                 AccessLearnPolicies.AdministratorOnly,
-                policy => policy.RequireRole(AccessLearnRoles.Administrator));
+                policy => policy.RequireRole(AccessLearnRoles.Administrator))
+            .AddPolicy(AccessLearnPolicies.LessonsRead, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.LessonsRead));
+            })
+            .AddPolicy(AccessLearnPolicies.LessonsWrite, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.LessonsWrite));
+            })
+            .AddPolicy(AccessLearnPolicies.ResourcesWrite, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.ResourcesWrite));
+            });
+        services.AddSingleton<IAuthorizationHandler, ScopeOrRoleHandler>();
+
+        services
+            .AddOptions<IntegrationApiKeyOptions>()
+            .Bind(configuration.GetSection(IntegrationApiKeyOptions.SectionName))
+            .Validate(options => options.Pepper.Length >= 32, "ApiKeyAuthentication:Pepper must contain at least 32 characters.")
+            .ValidateOnStart();
+        services.AddScoped<IIntegrationApiKeyService, IntegrationApiKeyService>();
+
+        services
+            .AddOptions<FfprobeOptions>()
+            .Bind(configuration.GetSection(FfprobeOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.ExecutablePath), "MediaProbe:ExecutablePath is required.")
+            .Validate(options => options.TimeoutSeconds is >= 1 and <= 300, "MediaProbe:TimeoutSeconds must be between 1 and 300.")
+            .ValidateOnStart();
+        services
+            .AddOptions<UploadQuarantineOptions>()
+            .Bind(configuration.GetSection(UploadQuarantineOptions.SectionName))
+            .Validate(
+                options => options.MaximumAgeMinutes is >= 1 and <= 10_080,
+                "LessonIngest:MaximumAgeMinutes must be between 1 and 10080.")
+            .ValidateOnStart();
+        services.AddSingleton<TemporaryUploadQuarantine>();
+        services.AddSingleton<IUploadQuarantine>(provider =>
+            provider.GetRequiredService<TemporaryUploadQuarantine>());
+        services.AddHostedService<UploadQuarantineCleanupService>();
+        services.AddSingleton<IMediaProbe, FfprobeMediaProbe>();
+        services.AddScoped<ILessonIngestService, LessonIngestService>();
 
         services
             .AddOptions<BootstrapAdminOptions>()

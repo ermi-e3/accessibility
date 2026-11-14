@@ -578,7 +578,13 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
 
                     b.ToTable("media_assets", t =>
                         {
+                            t.HasCheckConstraint("ck_media_assets_dimensions", "(width IS NULL OR width > 0) AND (height IS NULL OR height > 0)");
+
                             t.HasCheckConstraint("ck_media_assets_duration", "duration_milliseconds IS NULL OR duration_milliseconds > 0");
+
+                            t.HasCheckConstraint("ck_media_assets_sign_language", "role <> 'SignLanguage' OR language IS NOT NULL AND language = 'eth'");
+
+                            t.HasCheckConstraint("ck_media_assets_sync_offset", "sync_offset_milliseconds >= 0");
                         });
                 });
 
