@@ -1,6 +1,21 @@
-@accessibility.Api_HostAddress = http://localhost:5052
+@accessibility.Api_HostAddress = https://localhost:7121
 
-GET {{accessibility.Api_HostAddress}}/weatherforecast/
+GET {{accessibility.Api_HostAddress}}/health/live
+Accept: application/json
+
+###
+
+GET {{accessibility.Api_HostAddress}}/health/ready
+Accept: application/json
+
+###
+
+GET {{accessibility.Api_HostAddress}}/openapi/v1.json
+Accept: application/json
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/auth/antiforgery
 Accept: application/json
 
 ###

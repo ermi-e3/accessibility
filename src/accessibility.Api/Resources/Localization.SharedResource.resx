@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data name="UnexpectedErrorTitle" xml:space="preserve">
+    <value>An unexpected error occurred.</value>
+  </data>
+  <data name="ValidationErrorTitle" xml:space="preserve">
+    <value>One or more validation errors occurred.</value>
+  </data>
+  <data name="NotFoundErrorTitle" xml:space="preserve">
+    <value>The requested resource was not found.</value>
+  </data>
+  <data name="ConflictErrorTitle" xml:space="preserve">
+    <value>The request conflicts with the current resource state.</value>
+  </data>
+  <data name="StorageUnavailableTitle" xml:space="preserve">
+    <value>Object storage is temporarily unavailable.</value>
+  </data>
+  <data name="ForbiddenErrorTitle" xml:space="preserve">
+    <value>You do not have permission to perform this action.</value>
+  </data>
+  <data name="AuthenticationFailedTitle" xml:space="preserve">
+    <value>Authentication failed.</value>
+  </data>
+  <data name="AuthenticationRequiredTitle" xml:space="preserve">
+    <value>Authentication is required.</value>
+  </data>
+  <data name="RateLimitedTitle" xml:space="preserve">
+    <value>Too many requests were sent.</value>
+  </data>
+  <data name="ServiceUnavailableTitle" xml:space="preserve">
+    <value>The service is temporarily unavailable.</value>
+  </data>
+  <data name="InvalidFieldValue" xml:space="preserve">
+    <value>The value is invalid.</value>
+  </data>
+</root>
