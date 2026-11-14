@@ -10,6 +10,7 @@ using Accessibility.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Localization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -69,6 +70,11 @@ builder.Services.AddAntiforgery(options =>
     options.Cookie.SameSite = SameSiteMode.Strict;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 });
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+});
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(CorsSettings.PublicReadPolicy, policy =>
@@ -91,10 +97,32 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 Window = TimeSpan.FromMinutes(1)
             }));
-    options.OnRejected = (context, _) =>
+    options.AddPolicy(RateLimitPolicies.Authentication, context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 30,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+    options.OnRejected = async (context, cancellationToken) =>
     {
         context.HttpContext.Response.Headers.RetryAfter = "60";
-        return ValueTask.CompletedTask;
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        var problemDetails = context.HttpContext.RequestServices.GetRequiredService<IProblemDetailsService>();
+        await problemDetails.TryWriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = context.HttpContext,
+            ProblemDetails = new ProblemDetails
+            {
+                Status = StatusCodes.Status429TooManyRequests,
+                Type = "https://httpstatuses.io/429",
+                Instance = context.HttpContext.Request.Path
+            }
+        });
     };
 });
 builder.Services
@@ -137,6 +165,7 @@ if (args.Contains("--initialize", StringComparer.OrdinalIgnoreCase))
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRequestLocalization();
@@ -146,11 +175,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapOpenApi().RequireCors(CorsSettings.PublicReadPolicy);
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false })
+    .DisableRateLimiting();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = registration => registration.Tags.Contains("ready")
-});
+}).DisableRateLimiting();
 app.MapControllers();
 app.MapRazorPages();
 

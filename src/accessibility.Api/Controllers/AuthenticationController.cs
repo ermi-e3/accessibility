@@ -1,11 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using Accessibility.Infrastructure.Identity;
+using Accessibility.Api.Configuration;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using Accessibility.Api.Localization;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Accessibility.Api.Controllers;
 
@@ -26,6 +28,7 @@ public sealed class AuthenticationController(
     }
 
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [ValidateAntiForgeryToken]
     [HttpPost("login")]
     public async Task<ActionResult<AuthenticatedUserResponse>> Login(
@@ -90,8 +93,8 @@ public sealed class AuthenticationController(
 }
 
 public sealed record LoginRequest(
-    [property: Required, EmailAddress, MaxLength(320)] string Email,
-    [property: Required, MaxLength(256)] string Password,
+    [param: Required, EmailAddress, MaxLength(320)] string Email,
+    [param: Required, MaxLength(256)] string Password,
     bool RememberMe = false);
 
 public sealed record AntiforgeryTokenResponse(string RequestToken, string HeaderName);

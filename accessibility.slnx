@@ -5,4 +5,7 @@
     <Project Path="src/accessibility.Domain/accessibility.Domain.csproj" />
     <Project Path="src/accessibility.Infrastructure/accessibility.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Accessibility.Foundation.Tests/Accessibility.Foundation.Tests.csproj" />
+  </Folder>
 </Solution>

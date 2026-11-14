@@ -24,12 +24,7 @@ public sealed class ObjectStorageProvisioner(
 
         using var s3 = new AmazonS3Client(
             new BasicAWSCredentials(_provisioningOptions.AccessKey, _provisioningOptions.SecretKey),
-            new AmazonS3Config
-            {
-                ServiceURL = _storageOptions.ServiceUrl.TrimEnd('/'),
-                AuthenticationRegion = _storageOptions.Region,
-                ForcePathStyle = _storageOptions.ForcePathStyle
-            });
+            S3ClientConfiguration.Create(_storageOptions));
 
         if (!await AmazonS3Util.DoesS3BucketExistV2Async(s3, _storageOptions.BucketName))
         {
@@ -44,6 +39,11 @@ public sealed class ObjectStorageProvisioner(
             {
                 // Another provisioning process won the bucket-creation race.
             }
+        }
+
+        if (!_storageOptions.ProvisionBucketCors)
+        {
+            return;
         }
 
         await s3.PutCORSConfigurationAsync(

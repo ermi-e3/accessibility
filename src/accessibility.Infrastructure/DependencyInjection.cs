@@ -131,12 +131,7 @@ public static class DependencyInjection
             var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<ObjectStorageOptions>>().Value;
             return new AmazonS3Client(
                 new BasicAWSCredentials(options.AccessKey, options.SecretKey),
-                new AmazonS3Config
-                {
-                    ServiceURL = options.ServiceUrl.TrimEnd('/'),
-                    AuthenticationRegion = options.Region,
-                    ForcePathStyle = options.ForcePathStyle
-                });
+                S3ClientConfiguration.Create(options));
         });
         services.AddSingleton<IObjectStorage, S3ObjectStorage>();
         services.AddSingleton<ObjectStorageProvisioner>();

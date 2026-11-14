@@ -19,4 +19,6 @@ public sealed class ObjectStorageOptions
     public int DefaultReadUrlLifetimeMinutes { get; init; } = 30;
 
     public string[] CorsAllowedOrigins { get; init; } = ["*"];
+
+    public bool ProvisionBucketCors { get; init; } = true;
 }

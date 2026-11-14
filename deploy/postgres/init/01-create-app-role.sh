@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+# This script runs only when PostgreSQL initializes an empty data volume.
+
 psql -v ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" \

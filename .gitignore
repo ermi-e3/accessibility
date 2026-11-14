@@ -164,13 +164,12 @@ Desktop.ini
 docker-compose.override.local.yaml
 docker-compose.override.local.yml
 
-
-IMPLEMENTATION_STATUS.md
-compose.yaml
-
 # .env.example
 # .env.initialize.example
 # .env.runtime.example
 
 # Directory.Build.props
 # deploy/
+
+Testing Prompt.md
+IMPLEMENTATION_STATUS.md

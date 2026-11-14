@@ -1,0 +1,92 @@
+name: accesslearn
+
+services:
+  postgres:
+    image: postgres:18.7-alpine3.23@sha256:e6014245dccbc0f28b07dac8e3f793c94a18420f78690e9db547957514a524f1
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:?Set POSTGRES_ADMIN_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      ACCESSLEARN_MIGRATION_USER: ${ACCESSLEARN_MIGRATION_USER:?Set ACCESSLEARN_MIGRATION_USER in .env}
+      ACCESSLEARN_MIGRATION_PASSWORD: ${ACCESSLEARN_MIGRATION_PASSWORD:?Set ACCESSLEARN_MIGRATION_PASSWORD in .env}
+      ACCESSLEARN_DB_USER: ${ACCESSLEARN_DB_USER:?Set ACCESSLEARN_DB_USER in .env}
+      ACCESSLEARN_DB_PASSWORD: ${ACCESSLEARN_DB_PASSWORD:?Set ACCESSLEARN_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - accesslearn-postgres:/var/lib/postgresql
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  minio:
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
+    command: server /bitnami/minio/data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_CORS_ALLOWED_ORIGINS:-*}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - accesslearn-minio:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:9000/minio/health/live > /dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  minio-init:
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3@sha256:73bd39f7899a0cef12b8dd5df13aa93a3ed1aaa44236542442e9ac76819ac158
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      MINIO_APP_USER: ${MINIO_APP_USER:?Set MINIO_APP_USER in .env}
+      MINIO_APP_PASSWORD: ${MINIO_APP_PASSWORD:?Set MINIO_APP_PASSWORD in .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:?Set MINIO_BUCKET in .env}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done
+        mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+        mc admin policy detach local accesslearn-app --user "$${MINIO_APP_USER}" || true
+        mc admin policy remove local accesslearn-app || true
+        mc admin user remove local "$${MINIO_APP_USER}" || true
+        mc admin user add local "$${MINIO_APP_USER}" "$${MINIO_APP_PASSWORD}"
+        cat > /tmp/accesslearn-policy.json <<EOF
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+              "Resource": ["arn:aws:s3:::$${MINIO_BUCKET}"]
+            },
+            {
+              "Effect": "Allow",
+              "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+              "Resource": ["arn:aws:s3:::$${MINIO_BUCKET}/*"]
+            }
+          ]
+        }
+        EOF
+        mc admin policy create local accesslearn-app /tmp/accesslearn-policy.json
+        mc admin policy attach local accesslearn-app --user "$${MINIO_APP_USER}"
+    restart: "no"
+
+volumes:
+  accesslearn-postgres:
+  accesslearn-minio:
