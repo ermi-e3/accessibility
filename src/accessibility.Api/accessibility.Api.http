@@ -1,0 +1,6 @@
+@accessibility.Api_HostAddress = http://localhost:5052
+
+GET {{accessibility.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

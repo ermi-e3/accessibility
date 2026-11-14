@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/accessibility.Api/accessibility.Api.csproj" />
+    <Project Path="src/accessibility.Application/accessibility.Application.csproj" />
+    <Project Path="src/accessibility.Domain/accessibility.Domain.csproj" />
+    <Project Path="src/accessibility.Infrastructure/accessibility.Infrastructure.csproj" />
+  </Folder>
+</Solution>
