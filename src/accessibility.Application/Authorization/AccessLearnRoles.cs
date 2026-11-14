@@ -10,4 +10,10 @@ public static class AccessLearnPolicies
 {
     public const string EducatorOrAdministrator = "EducatorOrAdministrator";
     public const string AdministratorOnly = "AdministratorOnly";
+
+    public const string LessonsRead = "LessonsRead";
+
+    public const string LessonsWrite = "LessonsWrite";
+
+    public const string ResourcesWrite = "ResourcesWrite";
 }

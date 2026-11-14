@@ -1,13 +1,20 @@
 using System.Globalization;
 using System.Threading.RateLimiting;
 using Accessibility.Api.Configuration;
+using Accessibility.Api.Authorization;
 using Accessibility.Api.Errors;
 using Accessibility.Api.Identity;
 using Accessibility.Api.Localization;
+using Accessibility.Api.Multipart;
 using Accessibility.Application.Abstractions;
+using Accessibility.Application.Authorization;
 using Accessibility.Infrastructure;
 using Accessibility.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -28,8 +35,26 @@ if (supportedCultures.All(culture => culture.Name != localizationSettings.Defaul
 }
 
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services
+    .AddAuthentication()
+    .AddPolicyScheme(
+        AccessLearnAuthenticationSchemes.Management,
+        AccessLearnAuthenticationSchemes.Management,
+        options =>
+        {
+            options.ForwardDefaultSelector = context =>
+                context.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                    ? AccessLearnAuthenticationSchemes.ApiKey
+                    : IdentityConstants.ApplicationScheme;
+        })
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+        AccessLearnAuthenticationSchemes.ApiKey,
+        _ => { });
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUserContext, HttpUserContext>();
+builder.Services.AddScoped<ManagementAntiforgeryFilter>();
+builder.Services.AddScoped<IStreamingMultipartAssetReader, StreamingMultipartAssetReader>();
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ManagementAuthorizationResultHandler>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails(options =>
 {
@@ -44,6 +69,9 @@ builder.Services.AddProblemDetails(options =>
                 StatusCodes.Status401Unauthorized => ("AUTHENTICATION_REQUIRED", "AuthenticationRequiredTitle"),
                 StatusCodes.Status403Forbidden => ("FORBIDDEN", "ForbiddenErrorTitle"),
                 StatusCodes.Status404NotFound => ("RESOURCE_NOT_FOUND", "NotFoundErrorTitle"),
+                StatusCodes.Status413PayloadTooLarge => ("FILE_TOO_LARGE", "FileTooLargeTitle"),
+                StatusCodes.Status415UnsupportedMediaType => ("UNSUPPORTED_FILE_TYPE", "UnsupportedFileTitle"),
+                StatusCodes.Status422UnprocessableEntity => ("FILE_CONTENT_INVALID", "InvalidFileTitle"),
                 StatusCodes.Status429TooManyRequests => ("RATE_LIMITED", "RateLimitedTitle"),
                 StatusCodes.Status503ServiceUnavailable => ("SERVICE_UNAVAILABLE", "ServiceUnavailableTitle"),
                 _ => ("UNEXPECTED_ERROR", "UnexpectedErrorTitle")
@@ -107,6 +135,15 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0,
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 Window = TimeSpan.FromMinutes(1)
+            }));
+    options.AddPolicy(RateLimitPolicies.MediaUpload, _ =>
+        RateLimitPartition.GetConcurrencyLimiter(
+            "media-upload",
+            _ => new ConcurrencyLimiterOptions
+            {
+                PermitLimit = 2,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
             }));
     options.OnRejected = async (context, cancellationToken) =>
     {
@@ -185,3 +222,5 @@ app.MapControllers();
 app.MapRazorPages();
 
 await app.RunAsync();
+
+public partial class Program;

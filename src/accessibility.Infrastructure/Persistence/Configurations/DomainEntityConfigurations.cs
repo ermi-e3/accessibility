@@ -107,9 +107,21 @@ internal sealed class MediaAssetConfiguration : IEntityTypeConfiguration<MediaAs
             .IsUnique()
             .HasFilter("is_active = TRUE AND role IN ('PrimaryVideo', 'PrimaryAudio')");
         builder.HasIndex(asset => asset.StoredFileId).IsUnique();
-        builder.ToTable(table => table.HasCheckConstraint(
-            "ck_media_assets_duration",
-            "duration_milliseconds IS NULL OR duration_milliseconds > 0"));
+        builder.ToTable(table =>
+        {
+            table.HasCheckConstraint(
+                "ck_media_assets_duration",
+                "duration_milliseconds IS NULL OR duration_milliseconds > 0");
+            table.HasCheckConstraint(
+                "ck_media_assets_sync_offset",
+                "sync_offset_milliseconds >= 0");
+            table.HasCheckConstraint(
+                "ck_media_assets_dimensions",
+                "(width IS NULL OR width > 0) AND (height IS NULL OR height > 0)");
+            table.HasCheckConstraint(
+                "ck_media_assets_sign_language",
+                "role <> 'SignLanguage' OR language IS NOT NULL AND language = 'eth'");
+        });
     }
 }
 

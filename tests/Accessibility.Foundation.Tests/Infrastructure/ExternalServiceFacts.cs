@@ -23,3 +23,14 @@ public sealed class DatabaseIntegrationFactAttribute : FactAttribute
         }
     }
 }
+
+public sealed class FfprobeIntegrationFactAttribute : FactAttribute
+{
+    public FfprobeIntegrationFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ACCESSLEARN_TEST_FFPROBE_PATH")))
+        {
+            Skip = "Set ACCESSLEARN_TEST_FFPROBE_PATH to run ffprobe integration tests.";
+        }
+    }
+}

@@ -45,4 +45,19 @@
   <data name="InvalidFieldValue" xml:space="preserve">
     <value>የገባው ዋጋ ትክክል አይደለም።</value>
   </data>
+  <data name="InsufficientScopeTitle" xml:space="preserve">
+    <value>የውህደት ደንበኛው አስፈላጊው ፈቃድ የለውም።</value>
+  </data>
+  <data name="FileTooLargeTitle" xml:space="preserve">
+    <value>የተጫነው ፋይል በጣም ትልቅ ነው።</value>
+  </data>
+  <data name="UnsupportedFileTitle" xml:space="preserve">
+    <value>የተጫነው የፋይል አይነት አይደገፍም።</value>
+  </data>
+  <data name="InvalidFileTitle" xml:space="preserve">
+    <value>የተጫነው የፋይል ይዘት ትክክል አይደለም።</value>
+  </data>
+  <data name="ProcessorUnavailableTitle" xml:space="preserve">
+    <value>የሚዲያ ምርመራ አገልግሎቱ አይገኝም።</value>
+  </data>
 </root>

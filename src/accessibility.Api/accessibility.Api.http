@@ -1,4 +1,5 @@
 @accessibility.Api_HostAddress = https://localhost:7121
+@accessibility.Api_ApiKey = replace-with-server-held-integration-key
 
 GET {{accessibility.Api_HostAddress}}/health/live
 Accept: application/json
@@ -17,5 +18,24 @@ Accept: application/json
 
 GET {{accessibility.Api_HostAddress}}/api/v1/auth/antiforgery
 Accept: application/json
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/lessons?limit=20
+Accept: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+
+###
+
+POST {{accessibility.Api_HostAddress}}/api/v1/lessons
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+
+{
+  "title": "Accessible lesson",
+  "description": "Lesson created through the scoped integration API.",
+  "sourceLanguage": "en"
+}
 
 ###

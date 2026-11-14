@@ -70,6 +70,12 @@ public sealed class MediaAsset : AuditableEntity
         Status = ResourceStatus.Stale;
     }
 
+    public void Reject()
+    {
+        Status = ResourceStatus.Rejected;
+        IsActive = false;
+    }
+
     public void Supersede()
     {
         Status = ResourceStatus.Superseded;
