@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data name="UnexpectedErrorTitle" xml:space="preserve">
+    <value>ያልተጠበቀ ስህተት ተከስቷል።</value>
+  </data>
+  <data name="ValidationErrorTitle" xml:space="preserve">
+    <value>አንድ ወይም ከዚያ በላይ የማረጋገጫ ስህተቶች ተከስተዋል።</value>
+  </data>
+  <data name="NotFoundErrorTitle" xml:space="preserve">
+    <value>የተጠየቀው ሀብት አልተገኘም።</value>
+  </data>
+  <data name="ConflictErrorTitle" xml:space="preserve">
+    <value>ጥያቄው ከአሁኑ የሀብት ሁኔታ ጋር ይጋጫል።</value>
+  </data>
+  <data name="StorageUnavailableTitle" xml:space="preserve">
+    <value>የፋይል ማከማቻው ለጊዜው አይገኝም።</value>
+  </data>
+  <data name="ForbiddenErrorTitle" xml:space="preserve">
+    <value>ይህን ተግባር ለማከናወን ፈቃድ የለዎትም።</value>
+  </data>
+  <data name="AuthenticationFailedTitle" xml:space="preserve">
+    <value>ማንነትን ማረጋገጥ አልተሳካም።</value>
+  </data>
+  <data name="AuthenticationRequiredTitle" xml:space="preserve">
+    <value>ማንነትን ማረጋገጥ ያስፈልጋል።</value>
+  </data>
+  <data name="RateLimitedTitle" xml:space="preserve">
+    <value>በጣም ብዙ ጥያቄዎች ተልከዋል።</value>
+  </data>
+  <data name="ServiceUnavailableTitle" xml:space="preserve">
+    <value>አገልግሎቱ ለጊዜው አይገኝም።</value>
+  </data>
+  <data name="InvalidFieldValue" xml:space="preserve">
+    <value>የገባው ዋጋ ትክክል አይደለም።</value>
+  </data>
+</root>

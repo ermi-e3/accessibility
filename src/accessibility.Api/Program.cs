@@ -1,23 +1,157 @@
+using System.Globalization;
+using System.Threading.RateLimiting;
+using Accessibility.Api.Configuration;
+using Accessibility.Api.Errors;
+using Accessibility.Api.Identity;
+using Accessibility.Api.Localization;
+using Accessibility.Application.Abstractions;
+using Accessibility.Infrastructure;
+using Accessibility.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Localization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+var localizationSettings = builder.Configuration
+    .GetSection(LocalizationSettings.SectionName)
+    .Get<LocalizationSettings>() ?? new LocalizationSettings();
+var supportedCultures = localizationSettings.SupportedCultures
+    .Select(CultureInfo.GetCultureInfo)
+    .DistinctBy(culture => culture.Name)
+    .ToArray();
+if (supportedCultures.All(culture => culture.Name != localizationSettings.DefaultCulture))
+{
+    throw new InvalidOperationException("Localization:DefaultCulture must be included in SupportedCultures.");
+}
 
-builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IUserContext, HttpUserContext>();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = context =>
+    {
+        context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+        if (!context.ProblemDetails.Extensions.ContainsKey("code"))
+        {
+            var (code, titleKey) = context.ProblemDetails.Status switch
+            {
+                StatusCodes.Status400BadRequest => ("VALIDATION_ERROR", "ValidationErrorTitle"),
+                StatusCodes.Status401Unauthorized => ("AUTHENTICATION_REQUIRED", "AuthenticationRequiredTitle"),
+                StatusCodes.Status403Forbidden => ("FORBIDDEN", "ForbiddenErrorTitle"),
+                StatusCodes.Status404NotFound => ("RESOURCE_NOT_FOUND", "NotFoundErrorTitle"),
+                StatusCodes.Status429TooManyRequests => ("RATE_LIMITED", "RateLimitedTitle"),
+                StatusCodes.Status503ServiceUnavailable => ("SERVICE_UNAVAILABLE", "ServiceUnavailableTitle"),
+                _ => ("UNEXPECTED_ERROR", "UnexpectedErrorTitle")
+            };
+            var localizer = context.HttpContext.RequestServices.GetRequiredService<IStringLocalizer<SharedResource>>();
+            context.ProblemDetails.Extensions["code"] = code;
+            context.ProblemDetails.Title = localizer[titleKey];
+        }
+    };
+});
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    options.DefaultRequestCulture = new RequestCulture(localizationSettings.DefaultCulture);
+    options.SupportedCultures = supportedCultures;
+    options.SupportedUICultures = supportedCultures;
+    options.ApplyCurrentCultureToResponseHeaders = true;
+});
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-CSRF-TOKEN";
+    options.Cookie.Name = "accesslearn.antiforgery";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+});
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(CorsSettings.PublicReadPolicy, policy =>
+        policy.AllowAnyOrigin()
+            .WithMethods(HttpMethods.Get, HttpMethods.Head)
+            .WithHeaders("Accept", "Accept-Language", "If-None-Match", "Range")
+            .WithExposedHeaders("ETag", "Accept-Ranges", "Content-Range"));
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                AutoReplenishment = true,
+                PermitLimit = 120,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                Window = TimeSpan.FromMinutes(1)
+            }));
+    options.OnRejected = (context, _) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        return ValueTask.CompletedTask;
+    };
+});
+builder.Services
+    .AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var localizer = context.HttpContext.RequestServices.GetRequiredService<IStringLocalizer<SharedResource>>();
+            var errors = context.ModelState
+                .Where(entry => entry.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value!.Errors
+                        .Select(_ => localizer["InvalidFieldValue"].Value)
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray());
+            var details = new ValidationProblemDetails(errors)
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = localizer["ValidationErrorTitle"],
+                Type = "https://httpstatuses.io/400",
+                Instance = context.HttpContext.Request.Path
+            };
+            details.Extensions["code"] = "VALIDATION_ERROR";
+            details.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+            return new BadRequestObjectResult(details);
+        };
+    });
+builder.Services.AddRazorPages();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (args.Contains("--initialize", StringComparer.OrdinalIgnoreCase))
 {
-    app.MapOpenApi();
+    await DatabaseInitializer.InitializeAsync(app.Services, CancellationToken.None);
+    return;
 }
 
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 app.UseHttpsRedirection();
-
+app.UseStaticFiles();
+app.UseRequestLocalization();
+app.UseCors();
+app.UseRateLimiter();
+app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapOpenApi().RequireCors(CorsSettings.PublicReadPolicy);
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready")
+});
 app.MapControllers();
+app.MapRazorPages();
 
-app.Run();
+await app.RunAsync();

@@ -10,6 +10,8 @@
 .kilo/
 problems.md
 prompt.md
+Build Prompt.md
+Build Plan.md
 
 # Build results
 [Dd]ebug/
@@ -59,3 +61,116 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# ==========================================
+# .NET Build Outputs
+# ==========================================
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rm/
+[Aa]rm64/
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# ==========================================
+# Visual Studio
+# ==========================================
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.rsuser
+*.cache
+
+# ==========================================
+# JetBrains Rider
+# ==========================================
+.idea/
+*.sln.iml
+
+# ==========================================
+# VS Code
+# ==========================================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# ==========================================
+# NuGet
+# ==========================================
+*.nupkg
+*.snupkg
+.nuget/packages/
+
+# ==========================================
+# Environment Variables / Secrets
+# ==========================================
+.env
+.env.*
+!.env.example
+!.env.initialize.example
+!.env.runtime.example
+
+# ==========================================
+# Application Logs
+# ==========================================
+*.log
+logs/
+Log/
+Logs/
+
+# ==========================================
+# Test & Code Coverage
+# ==========================================
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+TestResults/
+
+# ==========================================
+# OS Generated Files
+# ==========================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ==========================================
+# Temporary Files
+# ==========================================
+*.tmp
+*.temp
+*.bak
+*.swp
+*.orig
+
+# ==========================================
+# Database / Local Development
+# ==========================================
+*.db-shm
+*.db-wal
+
+# ==========================================
+# Docker Local Overrides
+# ==========================================
+docker-compose.override.local.yaml
+docker-compose.override.local.yml
+
+
+IMPLEMENTATION_STATUS.md
+compose.yaml
+
+# .env.example
+# .env.initialize.example
+# .env.runtime.example
+
+# Directory.Build.props
+# deploy/
