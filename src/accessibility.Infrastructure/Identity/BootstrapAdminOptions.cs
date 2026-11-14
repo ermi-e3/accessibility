@@ -10,6 +10,11 @@ public sealed class BootstrapAdminOptions
 
     public string Password { get; init; } = string.Empty;
 
+    public bool HasAnyValue =>
+        !string.IsNullOrWhiteSpace(Email) ||
+        !string.IsNullOrWhiteSpace(DisplayName) ||
+        !string.IsNullOrWhiteSpace(Password);
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(Email) &&
         !string.IsNullOrWhiteSpace(DisplayName) &&
