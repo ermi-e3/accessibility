@@ -55,6 +55,20 @@ public sealed class CaptionArtifact : AuditableEntity
         Status = ResourceStatus.Pending;
     }
 
+    public void RestoreReady()
+    {
+        if (Status != ResourceStatus.Stale)
+        {
+            throw new InvalidOperationException("Only a stale caption artifact can be restored.");
+        }
+        Status = ResourceStatus.Ready;
+    }
+
+    public void Supersede()
+    {
+        Status = ResourceStatus.Superseded;
+    }
+
     public void MarkStale()
     {
         Status = ResourceStatus.Stale;

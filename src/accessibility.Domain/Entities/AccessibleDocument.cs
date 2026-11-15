@@ -41,4 +41,9 @@ public sealed class AccessibleDocument : AuditableEntity
     {
         Status = DocumentStatus.Stale;
     }
+
+    public void Fail()
+    {
+        Status = DocumentStatus.Failed;
+    }
 }

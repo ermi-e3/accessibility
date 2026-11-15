@@ -19,6 +19,7 @@ public sealed class PlayerPublicationService(
     AccessLearnDbContext database,
     IUserContext userContext,
     IObjectStorage objectStorage,
+    ITranscriptFormatService transcriptFormats,
     TimeProvider timeProvider,
     IOptions<PlayerDeliveryOptions> options,
     ILogger<PlayerPublicationService> logger) : IPlayerPublicationService
@@ -156,7 +157,7 @@ public sealed class PlayerPublicationService(
                 from candidate in database.CaptionArtifacts
                 join file in database.StoredFiles on candidate.StoredFileId equals file.Id
                 where candidate.TranscriptId == transcript.Id && candidate.Format == CaptionFormat.WebVtt &&
-                      candidate.GeneratorVersion == "accesslearn-vtt-v1"
+                      candidate.GeneratorVersion == "accesslearn-vtt-v1" && candidate.Checksum == checksum
                 select new { Artifact = candidate, File = file })
             .SingleOrDefaultAsync(cancellationToken);
         CaptionArtifact artifact;
@@ -196,6 +197,10 @@ public sealed class PlayerPublicationService(
             }
 
             if (artifact.Status == ResourceStatus.Failed) artifact.Retry();
+            if (artifact.Status == ResourceStatus.Stale && storedFile.Status == StoredFileStatus.Ready)
+            {
+                artifact.RestoreReady();
+            }
             if (storedFile.Status == StoredFileStatus.Rejected) storedFile.RetryQuarantine();
         }
 
@@ -228,10 +233,34 @@ public sealed class PlayerPublicationService(
             if (storedFile.Status == StoredFileStatus.Quarantined) storedFile.MarkReady(captionWrite.ETag);
             if (artifact.Status == ResourceStatus.Pending) artifact.MarkReady();
         }
+
+        var exchangeSegments = segments.Select(segment => new ProviderTranscriptSegment(
+            segment.Sequence,
+            segment.StartMilliseconds,
+            segment.EndMilliseconds,
+            segment.Text,
+            segment.SpeakerLabel)).ToArray();
+        await EnsureAdditionalArtifactAsync(
+            transcript,
+            exchangeSegments,
+            TranscriptExchangeFormat.Srt,
+            CaptionFormat.Srt,
+            "application/x-subrip; charset=utf-8",
+            "srt",
+            cancellationToken);
+        await EnsureAdditionalArtifactAsync(
+            transcript,
+            exchangeSegments,
+            TranscriptExchangeFormat.Text,
+            CaptionFormat.Text,
+            "text/plain; charset=utf-8",
+            "txt",
+            cancellationToken);
         try
         {
             if (previousApproved is not null)
             {
+                await MarkDerivedTranslationsStaleAsync(previousApproved.Id, transcript.Id, cancellationToken);
                 await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
                 previousApproved.Supersede();
                 await database.SaveChangesAsync(cancellationToken);
@@ -262,6 +291,34 @@ public sealed class PlayerPublicationService(
         }
 
         return ToTranscriptModel(transcript, segments);
+    }
+
+    private async Task MarkDerivedTranslationsStaleAsync(
+        Guid sourceTranscriptId,
+        Guid excludedTranscriptId,
+        CancellationToken cancellationToken)
+    {
+        var derived = new List<Transcript>();
+        var frontier = new[] { sourceTranscriptId };
+        while (frontier.Length > 0)
+        {
+            var level = await database.Transcripts
+                .Where(candidate => candidate.SourceTranscriptId.HasValue &&
+                                    frontier.Contains(candidate.SourceTranscriptId.Value) &&
+                                    candidate.Id != excludedTranscriptId &&
+                                    candidate.ReviewStatus != ReviewStatus.Superseded)
+                .ToListAsync(cancellationToken);
+            var unseen = level.Where(candidate => derived.All(existing => existing.Id != candidate.Id)).ToList();
+            if (unseen.Count == 0) break;
+            derived.AddRange(unseen);
+            frontier = unseen.Select(candidate => candidate.Id).ToArray();
+        }
+        foreach (var transcript in derived) transcript.MarkStale();
+        var ids = derived.Select(transcript => transcript.Id).ToArray();
+        var artifacts = await database.CaptionArtifacts
+            .Where(artifact => ids.Contains(artifact.TranscriptId) && artifact.Status == ResourceStatus.Ready)
+            .ToListAsync(cancellationToken);
+        foreach (var artifact in artifacts) artifact.MarkStale();
     }
 
     public async Task<PublicationModel> PublishAsync(
@@ -335,6 +392,7 @@ public sealed class PlayerPublicationService(
                     transcript.Id,
                     transcript.Language,
                     transcript.Revision,
+                    transcript.SourceTranscriptId,
                     transcript.SourceMediaAssetId,
                     transcript.SourceMediaVersion,
                     file.Id,
@@ -349,6 +407,22 @@ public sealed class PlayerPublicationService(
                 caption.SourceMediaVersion != primary.Version))
         {
             throw new StateConflictException("An approved transcript is stale for the current primary media.");
+        }
+        var sourceTranscriptIds = captionReferences
+            .Where(caption => caption.SourceTranscriptId.HasValue)
+            .Select(caption => caption.SourceTranscriptId!.Value)
+            .Distinct()
+            .ToArray();
+        if (sourceTranscriptIds.Length > 0)
+        {
+            var currentSources = await database.Transcripts.CountAsync(
+                transcript => sourceTranscriptIds.Contains(transcript.Id) &&
+                              transcript.ReviewStatus == ReviewStatus.Approved,
+                cancellationToken);
+            if (currentSources != sourceTranscriptIds.Length)
+            {
+                throw new StateConflictException("A translated transcript is stale for its reviewed source transcript.");
+            }
         }
 
         var captions = new List<SnapshotCaption>(captionReferences.Count);
@@ -646,6 +720,85 @@ public sealed class PlayerPublicationService(
         }
     }
 
+    private async Task EnsureAdditionalArtifactAsync(
+        Transcript transcript,
+        IReadOnlyList<ProviderTranscriptSegment> segments,
+        TranscriptExchangeFormat exchangeFormat,
+        CaptionFormat captionFormat,
+        string contentType,
+        string extension,
+        CancellationToken cancellationToken)
+    {
+        const string generator = "accesslearn-caption-v1";
+        var contentBytes = Encoding.UTF8.GetBytes(transcriptFormats.Serialize(segments, exchangeFormat));
+        var checksum = Convert.ToHexString(SHA256.HashData(contentBytes)).ToLowerInvariant();
+        var objectKey = $"lessons/{transcript.LessonId:N}/captions/{transcript.Language}/r{transcript.Revision}-{checksum[..16]}.{extension}";
+        var existing = await (
+                from candidate in database.CaptionArtifacts
+                join persistedFile in database.StoredFiles on candidate.StoredFileId equals persistedFile.Id
+                where candidate.TranscriptId == transcript.Id && candidate.Format == captionFormat &&
+                      candidate.GeneratorVersion == generator && candidate.Checksum == checksum
+                select new { Artifact = candidate, File = persistedFile })
+            .SingleOrDefaultAsync(cancellationToken);
+        CaptionArtifact artifact;
+        StoredFile file;
+        if (existing is null)
+        {
+            file = new StoredFile(
+                objectKey,
+                $"{transcript.Language}.{extension}",
+                contentType,
+                contentBytes.Length,
+                checksum);
+            artifact = new CaptionArtifact(transcript.Id, file.Id, captionFormat, generator, checksum);
+            database.StoredFiles.Add(file);
+            database.CaptionArtifacts.Add(artifact);
+            await database.SaveChangesAsync(cancellationToken);
+        }
+        else
+        {
+            artifact = existing.Artifact;
+            file = existing.File;
+            if (artifact.Checksum != checksum || file.ObjectKey != objectKey)
+            {
+                throw new StateConflictException("Existing caption artifact retry metadata does not match.");
+            }
+            if (artifact.Status == ResourceStatus.Failed) artifact.Retry();
+            if (artifact.Status == ResourceStatus.Stale && file.Status == StoredFileStatus.Ready)
+            {
+                artifact.RestoreReady();
+            }
+            if (file.Status == StoredFileStatus.Rejected) file.RetryQuarantine();
+        }
+
+        if (artifact.Status == ResourceStatus.Ready && file.Status == StoredFileStatus.Ready) return;
+        try
+        {
+            await using var stream = new MemoryStream(contentBytes, writable: false);
+            var write = await objectStorage.PutAsync(
+                objectKey,
+                stream,
+                contentType,
+                contentBytes.Length,
+                new Dictionary<string, string>
+                {
+                    ["sha256"] = checksum,
+                    ["transcript-id"] = transcript.Id.ToString("N")
+                },
+                cancellationToken);
+            if (file.Status == StoredFileStatus.Quarantined) file.MarkReady(write.ETag);
+            if (artifact.Status == ResourceStatus.Pending) artifact.MarkReady();
+            await database.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            artifact.Fail();
+            file.Reject("Caption artifact generation did not complete.");
+            await TrySaveFailureStateAsync();
+            throw new StorageUnavailableException("A caption artifact could not be stored.", exception);
+        }
+    }
+
     private async Task ValidateSnapshotReferencesAsync(
         PlayerPublicationSnapshot snapshot,
         CancellationToken cancellationToken)
@@ -939,6 +1092,7 @@ public sealed class PlayerPublicationService(
         Guid TranscriptId,
         string Language,
         int Revision,
+        Guid? SourceTranscriptId,
         Guid? SourceMediaAssetId,
         long? SourceMediaVersion,
         Guid FileId,
