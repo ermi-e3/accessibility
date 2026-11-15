@@ -12,6 +12,7 @@ public enum StoredFileStatus
     Quarantined,
     Ready,
     Rejected,
+    Deleting,
     Deleted
 }
 

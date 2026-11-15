@@ -41,6 +41,10 @@ public sealed class AccessLearnDbContext : IdentityDbContext<ApplicationUser, Id
 
     public DbSet<ProcessingJob> ProcessingJobs => Set<ProcessingJob>();
 
+    public DbSet<ProcessingJobAttempt> ProcessingJobAttempts => Set<ProcessingJobAttempt>();
+
+    public DbSet<ProcessingIdempotencyRequest> ProcessingIdempotencyRequests => Set<ProcessingIdempotencyRequest>();
+
     public DbSet<IntegrationClient> IntegrationClients => Set<IntegrationClient>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

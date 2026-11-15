@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Localization;
+using Hangfire;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -212,6 +213,15 @@ app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+if (builder.Configuration.GetValue("Processing:DashboardEnabled", true))
+{
+    app.UseHangfireDashboard("/admin/jobs", new DashboardOptions
+    {
+        Authorization = [new HangfireDashboardAuthorizationFilter()],
+        DashboardTitle = "AccessLearn Processing Jobs",
+        IgnoreAntiforgeryToken = false
+    });
+}
 
 app.MapOpenApi().RequireCors(CorsSettings.PublicReadPolicy);
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false })

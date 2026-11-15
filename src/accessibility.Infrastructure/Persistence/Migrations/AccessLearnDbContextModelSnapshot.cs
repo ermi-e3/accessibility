@@ -146,9 +146,9 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("i_x_caption_artifacts_stored_file_id");
 
-                    b.HasIndex("TranscriptId", "Format", "GeneratorVersion")
+                    b.HasIndex("TranscriptId", "Format", "GeneratorVersion", "Checksum")
                         .IsUnique()
-                        .HasDatabaseName("i_x_caption_artifacts_transcript_id_format_generator_version");
+                        .HasDatabaseName("i_x_caption_artifacts_transcript_id_format_generator_version_ch~");
 
                     b.ToTable("caption_artifacts");
                 });
@@ -540,11 +540,23 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("lesson_id");
 
+                    b.Property<Guid?>("ProcessingJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("processing_job_id");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
                         .HasColumnName("role");
+
+                    b.Property<Guid?>("SourceMediaAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_media_asset_id");
+
+                    b.Property<long?>("SourceMediaVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_media_version");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -581,6 +593,12 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("i_x_media_assets_lesson_id")
                         .HasFilter("is_active = TRUE AND role IN ('PrimaryVideo', 'PrimaryAudio')");
 
+                    b.HasIndex("ProcessingJobId")
+                        .HasDatabaseName("i_x_media_assets_processing_job_id");
+
+                    b.HasIndex("SourceMediaAssetId")
+                        .HasDatabaseName("i_x_media_assets_source_media_asset_id");
+
                     b.HasIndex("StoredFileId")
                         .IsUnique()
                         .HasDatabaseName("i_x_media_assets_stored_file_id");
@@ -588,7 +606,7 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.HasIndex("LessonId", "Role")
                         .IsUnique()
                         .HasDatabaseName("i_x_media_assets_lesson_id_role")
-                        .HasFilter("is_active = TRUE AND role IN ('SignLanguage', 'AudioDescription')");
+                        .HasFilter("is_active = TRUE AND role IN ('SignLanguage', 'AudioDescription', 'OfflineAudio', 'Poster')");
 
                     b.ToTable("media_assets", t =>
                         {
@@ -599,6 +617,8 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_media_assets_duration", "duration_milliseconds IS NULL OR duration_milliseconds > 0");
 
                             t.HasCheckConstraint("ck_media_assets_sign_language", "role <> 'SignLanguage' OR language IS NOT NULL AND language = 'eth'");
+
+                            t.HasCheckConstraint("ck_media_assets_source_provenance", "(source_media_asset_id IS NULL AND source_media_version IS NULL) OR (source_media_asset_id IS NOT NULL AND source_media_version > 0)");
 
                             t.HasCheckConstraint("ck_media_assets_sync_offset", "sync_offset_milliseconds >= 0");
                         });
@@ -681,6 +701,49 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Accessibility.Domain.Entities.ProcessingIdempotencyRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ClientKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("client_key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
+                    b.Property<Guid>("ProcessingJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("processing_job_id");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("request_fingerprint");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_processing_idempotency_requests");
+
+                    b.HasIndex("ProcessingJobId")
+                        .HasDatabaseName("i_x_processing_idempotency_requests_processing_job_id");
+
+                    b.HasIndex("OwnerUserId", "ClientKey")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_processing_idempotency_requests_owner_user_id_client_key");
+
+                    b.ToTable("processing_idempotency_requests");
+                });
+
             modelBuilder.Entity("Accessibility.Domain.Entities.ProcessingJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -690,6 +753,15 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.Property<int>("Attempts")
                         .HasColumnType("integer")
                         .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset?>("CancellationRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancellation_requested_at");
+
+                    b.Property<string>("ClientRequestKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("client_request_key");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("timestamp with time zone")
@@ -713,6 +785,10 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("error_message");
 
+                    b.Property<Guid?>("ExecutionLeaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("execution_lease_id");
+
                     b.Property<string>("ExternalJobId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
@@ -723,6 +799,10 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("idempotency_key");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_expires_at");
 
                     b.Property<Guid?>("LessonId")
                         .HasColumnType("uuid")
@@ -736,6 +816,10 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("parent_job_id");
 
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload_json");
+
                     b.Property<int>("ProgressPercentage")
                         .HasColumnType("integer")
                         .HasColumnName("progress_percentage");
@@ -744,6 +828,15 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("provider");
+
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("request_fingerprint");
+
+                    b.Property<Guid?>("RequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_user_id");
 
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
@@ -789,14 +882,83 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.HasIndex("ParentJobId")
                         .HasDatabaseName("i_x_processing_jobs_parent_job_id");
 
+                    b.HasIndex("RequestedByUserId", "ClientRequestKey")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_processing_jobs_requested_by_user_id_client_request_key")
+                        .HasFilter("client_request_key IS NOT NULL");
+
                     b.HasIndex("Status", "CreatedAt")
                         .HasDatabaseName("i_x_processing_jobs_status_created_at");
+
+                    b.HasIndex("Status", "LeaseExpiresAt")
+                        .HasDatabaseName("i_x_processing_jobs_status_lease_expires_at");
 
                     b.ToTable("processing_jobs", t =>
                         {
                             t.HasCheckConstraint("ck_processing_jobs_progress", "progress_percentage >= 0 AND progress_percentage <= 100");
 
                             t.HasCheckConstraint("ck_processing_jobs_target", "lesson_id IS NOT NULL OR document_id IS NOT NULL OR media_asset_id IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Accessibility.Domain.Entities.ProcessingJobAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt_number");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("error_code");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("error_message");
+
+                    b.Property<Guid>("ProcessingJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("processing_job_id");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("provider");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_processing_job_attempts");
+
+                    b.HasIndex("ProcessingJobId", "AttemptNumber")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_processing_job_attempts_processing_job_id_attempt_number");
+
+                    b.ToTable("processing_job_attempts", t =>
+                        {
+                            t.HasCheckConstraint("ck_processing_job_attempts_number", "attempt_number > 0");
                         });
                 });
 
@@ -914,6 +1076,20 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("origin");
 
+                    b.Property<Guid?>("ProcessingJobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("processing_job_id");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderVersion")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("provider_version");
+
                     b.Property<string>("ReviewStatus")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -923,6 +1099,10 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.Property<int>("Revision")
                         .HasColumnType("integer")
                         .HasColumnName("revision");
+
+                    b.Property<Guid?>("RevisionOfTranscriptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revision_of_transcript_id");
 
                     b.Property<long>("SourceLessonRevision")
                         .HasColumnType("bigint")
@@ -955,11 +1135,19 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.HasIndex("ApprovedByUserId")
                         .HasDatabaseName("i_x_transcripts_approved_by_user_id");
 
+                    b.HasIndex("RevisionOfTranscriptId")
+                        .HasDatabaseName("i_x_transcripts_revision_of_transcript_id");
+
                     b.HasIndex("SourceMediaAssetId")
                         .HasDatabaseName("i_x_transcripts_source_media_asset_id");
 
                     b.HasIndex("SourceTranscriptId")
                         .HasDatabaseName("i_x_transcripts_source_transcript_id");
+
+                    b.HasIndex("ProcessingJobId", "Language")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_transcripts_processing_job_id_language")
+                        .HasFilter("processing_job_id IS NOT NULL");
 
                     b.HasIndex("LessonId", "Language", "ReviewStatus")
                         .IsUnique()
@@ -972,6 +1160,8 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
 
                     b.ToTable("transcripts", t =>
                         {
+                            t.HasCheckConstraint("ck_transcripts_generated_provenance", "origin <> 'Generated' OR processing_job_id IS NOT NULL AND provider IS NOT NULL");
+
                             t.HasCheckConstraint("ck_transcripts_revision", "revision > 0 AND source_lesson_revision > 0");
 
                             t.HasCheckConstraint("ck_transcripts_source_media", "(source_media_asset_id IS NULL AND source_media_version IS NULL) OR (source_media_asset_id IS NOT NULL AND source_media_version > 0)");
@@ -1434,6 +1624,18 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("f_k_media_assets_lessons_lesson_id");
 
+                    b.HasOne("Accessibility.Domain.Entities.ProcessingJob", null)
+                        .WithMany()
+                        .HasForeignKey("ProcessingJobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("f_k_media_assets_processing_jobs_processing_job_id");
+
+                    b.HasOne("Accessibility.Domain.Entities.MediaAsset", null)
+                        .WithMany()
+                        .HasForeignKey("SourceMediaAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("f_k_media_assets_media_assets_source_media_asset_id");
+
                     b.HasOne("Accessibility.Domain.Entities.StoredFile", null)
                         .WithMany()
                         .HasForeignKey("StoredFileId")
@@ -1464,6 +1666,23 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasConstraintName("f_k_offline_packages_stored_files_zip_file_id");
                 });
 
+            modelBuilder.Entity("Accessibility.Domain.Entities.ProcessingIdempotencyRequest", b =>
+                {
+                    b.HasOne("Accessibility.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_processing_idempotency_requests_asp_net_users_owner_user_id");
+
+                    b.HasOne("Accessibility.Domain.Entities.ProcessingJob", null)
+                        .WithMany()
+                        .HasForeignKey("ProcessingJobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_processing_idempotency_requests_processing_jobs_processing_j~");
+                });
+
             modelBuilder.Entity("Accessibility.Domain.Entities.ProcessingJob", b =>
                 {
                     b.HasOne("Accessibility.Domain.Entities.AccessibleDocument", null)
@@ -1489,6 +1708,22 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ParentJobId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("f_k_processing_jobs_processing_jobs_parent_job_id");
+
+                    b.HasOne("Accessibility.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("f_k_processing_jobs_asp_net_users_requested_by_user_id");
+                });
+
+            modelBuilder.Entity("Accessibility.Domain.Entities.ProcessingJobAttempt", b =>
+                {
+                    b.HasOne("Accessibility.Domain.Entities.ProcessingJob", null)
+                        .WithMany()
+                        .HasForeignKey("ProcessingJobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_processing_job_attempts_processing_jobs_processing_job_id");
                 });
 
             modelBuilder.Entity("Accessibility.Domain.Entities.Transcript", b =>
@@ -1505,6 +1740,18 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("f_k_transcripts_lessons_lesson_id");
+
+                    b.HasOne("Accessibility.Domain.Entities.ProcessingJob", null)
+                        .WithMany()
+                        .HasForeignKey("ProcessingJobId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("f_k_transcripts_processing_jobs_processing_job_id");
+
+                    b.HasOne("Accessibility.Domain.Entities.Transcript", null)
+                        .WithMany()
+                        .HasForeignKey("RevisionOfTranscriptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("f_k_transcripts_transcripts_revision_of_transcript_id");
 
                     b.HasOne("Accessibility.Domain.Entities.MediaAsset", null)
                         .WithMany()

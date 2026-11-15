@@ -6,6 +6,12 @@ public static class AccessLearnScopes
     public const string LessonsWrite = "lessons:write";
     public const string ResourcesWrite = "resources:write";
 
+    public const string ResourcesRead = "resources:read";
+
+    public const string ProcessingRead = "processing:read";
+
+    public const string ProcessingWrite = "processing:write";
+
     public const string LessonsPublish = "lessons:publish";
 }
 

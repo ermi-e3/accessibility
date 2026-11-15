@@ -103,13 +103,22 @@ internal sealed class MediaAssetConfiguration : IEntityTypeConfiguration<MediaAs
             .WithMany()
             .HasForeignKey(asset => asset.StoredFileId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<MediaAsset>()
+            .WithMany()
+            .HasForeignKey(asset => asset.SourceMediaAssetId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ProcessingJob>()
+            .WithMany()
+            .HasForeignKey(asset => asset.ProcessingJobId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(asset => asset.LessonId)
             .IsUnique()
             .HasFilter("is_active = TRUE AND role IN ('PrimaryVideo', 'PrimaryAudio')");
         builder.HasIndex(asset => new { asset.LessonId, asset.Role })
             .IsUnique()
-            .HasFilter("is_active = TRUE AND role IN ('SignLanguage', 'AudioDescription')");
+            .HasFilter(
+                "is_active = TRUE AND role IN ('SignLanguage', 'AudioDescription', 'OfflineAudio', 'Poster')");
         builder.HasIndex(asset => asset.StoredFileId).IsUnique();
         builder.ToTable(table =>
         {
@@ -131,6 +140,10 @@ internal sealed class MediaAssetConfiguration : IEntityTypeConfiguration<MediaAs
                 "is_human_reviewed = TRUE AND " +
                 "((role = 'SignLanguage' AND accessibility_mode = 'human-recorded') OR " +
                 "(role = 'AudioDescription' AND accessibility_mode = 'full-mix'))");
+            table.HasCheckConstraint(
+                "ck_media_assets_source_provenance",
+                "(source_media_asset_id IS NULL AND source_media_version IS NULL) OR " +
+                "(source_media_asset_id IS NOT NULL AND source_media_version > 0)");
         });
     }
 }
@@ -143,6 +156,8 @@ internal sealed class TranscriptConfiguration : IEntityTypeConfiguration<Transcr
         builder.Property(transcript => transcript.Language).HasMaxLength(35).IsRequired();
         builder.Property(transcript => transcript.Origin).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(transcript => transcript.ReviewStatus).HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(transcript => transcript.Provider).HasMaxLength(100);
+        builder.Property(transcript => transcript.ProviderVersion).HasMaxLength(100);
 
         builder.HasOne<Lesson>()
             .WithMany()
@@ -152,6 +167,10 @@ internal sealed class TranscriptConfiguration : IEntityTypeConfiguration<Transcr
             .WithMany()
             .HasForeignKey(transcript => transcript.SourceTranscriptId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Transcript>()
+            .WithMany()
+            .HasForeignKey(transcript => transcript.RevisionOfTranscriptId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<MediaAsset>()
             .WithMany()
             .HasForeignKey(transcript => transcript.SourceMediaAssetId)
@@ -160,8 +179,15 @@ internal sealed class TranscriptConfiguration : IEntityTypeConfiguration<Transcr
             .WithMany()
             .HasForeignKey(transcript => transcript.ApprovedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ProcessingJob>()
+            .WithMany()
+            .HasForeignKey(transcript => transcript.ProcessingJobId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(transcript => new { transcript.LessonId, transcript.Language, transcript.Revision }).IsUnique();
+        builder.HasIndex(transcript => new { transcript.ProcessingJobId, transcript.Language })
+            .IsUnique()
+            .HasFilter("processing_job_id IS NOT NULL");
         builder.HasIndex(transcript => new { transcript.LessonId, transcript.Language, transcript.ReviewStatus })
             .IsUnique()
             .HasFilter("review_status = 'Approved'");
@@ -172,6 +198,9 @@ internal sealed class TranscriptConfiguration : IEntityTypeConfiguration<Transcr
                 "ck_transcripts_source_media",
                 "(source_media_asset_id IS NULL AND source_media_version IS NULL) OR " +
                 "(source_media_asset_id IS NOT NULL AND source_media_version > 0)");
+            table.HasCheckConstraint(
+                "ck_transcripts_generated_provenance",
+                "origin <> 'Generated' OR processing_job_id IS NOT NULL AND provider IS NOT NULL");
         });
     }
 }
@@ -216,7 +245,16 @@ internal sealed class CaptionArtifactConfiguration : IEntityTypeConfiguration<Ca
             .HasForeignKey(artifact => artifact.StoredFileId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasIndex(artifact => new { artifact.TranscriptId, artifact.Format, artifact.GeneratorVersion }).IsUnique();
+        builder.HasIndex(artifact => new
+        {
+            artifact.TranscriptId,
+            artifact.Format,
+            artifact.GeneratorVersion,
+            artifact.Checksum
+        }).IsUnique();
+        builder.HasIndex(artifact => new { artifact.TranscriptId, artifact.Format, artifact.Status })
+            .IsUnique()
+            .HasFilter("status = 'Ready'");
         builder.HasIndex(artifact => artifact.StoredFileId).IsUnique();
     }
 }
@@ -362,6 +400,9 @@ internal sealed class ProcessingJobConfiguration : IEntityTypeConfiguration<Proc
         builder.Property(job => job.IdempotencyKey).HasMaxLength(200).IsRequired();
         builder.Property(job => job.Provider).HasMaxLength(100);
         builder.Property(job => job.ExternalJobId).HasMaxLength(200);
+        builder.Property(job => job.PayloadJson).HasColumnType("jsonb");
+        builder.Property(job => job.ClientRequestKey).HasMaxLength(200);
+        builder.Property(job => job.RequestFingerprint).HasMaxLength(200);
         builder.Property(job => job.ErrorCode).HasMaxLength(100);
         builder.Property(job => job.ErrorMessage).HasMaxLength(2_000);
 
@@ -381,9 +422,17 @@ internal sealed class ProcessingJobConfiguration : IEntityTypeConfiguration<Proc
             .WithMany()
             .HasForeignKey(job => job.ParentJobId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(job => job.RequestedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(job => job.IdempotencyKey).IsUnique();
+        builder.HasIndex(job => new { job.RequestedByUserId, job.ClientRequestKey })
+            .IsUnique()
+            .HasFilter("client_request_key IS NOT NULL");
         builder.HasIndex(job => new { job.Status, job.CreatedAt });
+        builder.HasIndex(job => new { job.Status, job.LeaseExpiresAt });
         builder.HasIndex(job => job.LessonId);
         builder.ToTable(table =>
         {
@@ -394,6 +443,48 @@ internal sealed class ProcessingJobConfiguration : IEntityTypeConfiguration<Proc
                 "ck_processing_jobs_progress",
                 "progress_percentage >= 0 AND progress_percentage <= 100");
         });
+    }
+}
+
+internal sealed class ProcessingJobAttemptConfiguration : IEntityTypeConfiguration<ProcessingJobAttempt>
+{
+    public void Configure(EntityTypeBuilder<ProcessingJobAttempt> builder)
+    {
+        ConfigurationDefaults.ConfigureEntity(builder);
+        builder.Property(attempt => attempt.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(attempt => attempt.Provider).HasMaxLength(100);
+        builder.Property(attempt => attempt.ErrorCode).HasMaxLength(100);
+        builder.Property(attempt => attempt.ErrorMessage).HasMaxLength(2_000);
+        builder.Property(attempt => attempt.Version).IsConcurrencyToken().IsRequired();
+        builder.HasOne<ProcessingJob>()
+            .WithMany()
+            .HasForeignKey(attempt => attempt.ProcessingJobId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(attempt => new { attempt.ProcessingJobId, attempt.AttemptNumber }).IsUnique();
+        builder.ToTable(table => table.HasCheckConstraint(
+            "ck_processing_job_attempts_number",
+            "attempt_number > 0"));
+    }
+}
+
+internal sealed class ProcessingIdempotencyRequestConfiguration
+    : IEntityTypeConfiguration<ProcessingIdempotencyRequest>
+{
+    public void Configure(EntityTypeBuilder<ProcessingIdempotencyRequest> builder)
+    {
+        ConfigurationDefaults.ConfigureEntity(builder);
+        builder.Property(request => request.ClientKey).HasMaxLength(200).IsRequired();
+        builder.Property(request => request.RequestFingerprint).HasMaxLength(200).IsRequired();
+        builder.HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(request => request.OwnerUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ProcessingJob>()
+            .WithMany()
+            .HasForeignKey(request => request.ProcessingJobId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(request => new { request.OwnerUserId, request.ClientKey }).IsUnique();
+        builder.HasIndex(request => request.ProcessingJobId);
     }
 }
 

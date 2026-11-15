@@ -294,6 +294,10 @@ public sealed class LessonIngestService(
         {
             if (activeAssets.Count > 0)
             {
+                await MarkDependentResourcesStaleAsync(
+                    lesson.Id,
+                    activeAssets.Select(active => active.Id).ToArray(),
+                    cancellationToken);
                 await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
                 foreach (var activeAsset in activeAssets)
                 {
@@ -336,6 +340,36 @@ public sealed class LessonIngestService(
             storedFile.ByteLength,
             storedFile.Sha256,
             asset.CreatedAt);
+    }
+
+    private async Task MarkDependentResourcesStaleAsync(
+        Guid lessonId,
+        Guid[] sourceAssetIds,
+        CancellationToken cancellationToken)
+    {
+        var transcripts = await database.Transcripts
+            .Where(transcript => transcript.SourceMediaAssetId.HasValue &&
+                                 sourceAssetIds.Contains(transcript.SourceMediaAssetId.Value) &&
+                                 transcript.ReviewStatus != ReviewStatus.Superseded)
+            .ToListAsync(cancellationToken);
+        foreach (var transcript in transcripts) transcript.MarkStale();
+        var transcriptIds = transcripts.Select(transcript => transcript.Id).ToArray();
+        var artifacts = await database.CaptionArtifacts
+            .Where(artifact => transcriptIds.Contains(artifact.TranscriptId) && artifact.Status == ResourceStatus.Ready)
+            .ToListAsync(cancellationToken);
+        foreach (var artifact in artifacts) artifact.MarkStale();
+        var derivedAssets = await database.MediaAssets
+            .Where(asset => asset.SourceMediaAssetId.HasValue &&
+                            sourceAssetIds.Contains(asset.SourceMediaAssetId.Value) && asset.IsActive)
+            .ToListAsync(cancellationToken);
+        foreach (var derivedAsset in derivedAssets) derivedAsset.Supersede();
+        var packages = await (
+                from package in database.OfflinePackages
+                join publication in database.LessonPublications on package.LessonPublicationId equals publication.Id
+                where publication.LessonId == lessonId && package.Status != OfflinePackageStatus.Stale
+                select package)
+            .ToListAsync(cancellationToken);
+        foreach (var package in packages) package.MarkStale();
     }
 
     private IQueryable<Lesson> VisibleLessons()
