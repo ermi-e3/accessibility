@@ -82,6 +82,20 @@ export interface PlayerState {
   audioDescriptionEnabled: boolean;
 }
 
+export interface PlayerProgressEventDetail {
+  lessonId: string;
+  publicationId: string;
+  revision: number;
+  currentTime: number;
+  duration: number;
+  progress: number;
+  percent: number;
+}
+
+export interface PlayerCompleteEventDetail extends PlayerProgressEventDetail {
+  completedAt: string;
+}
+
 export interface AccessLearnPlayerElement extends HTMLElement {
   configure(config: PlayerConfig): void;
   play(): Promise<void>;
@@ -93,4 +107,11 @@ export interface AccessLearnPlayerElement extends HTMLElement {
   setAudioDescription(enabled: boolean, muted?: boolean): Promise<void>;
   getState(): PlayerState;
   destroy(): void;
+}
+
+declare global {
+  interface HTMLElementEventMap {
+    "db-player:progress": CustomEvent<PlayerProgressEventDetail>;
+    "db-player:complete": CustomEvent<PlayerCompleteEventDetail>;
+  }
 }

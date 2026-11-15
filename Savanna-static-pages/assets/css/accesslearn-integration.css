@@ -1,0 +1,112 @@
+.accesslearn-module {
+  margin: 1.5rem 0 2rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 2px solid #0b3b4c;
+  border-radius: 0.75rem;
+  background: #f4fbfc;
+  overflow-wrap: anywhere;
+}
+
+.accesslearn-module h2 {
+  margin-top: 0;
+}
+
+.accesslearn-module accesslearn-player {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin-top: 1rem;
+}
+
+.accesslearn-module accesslearn-player[hidden] {
+  display: none;
+}
+
+.accesslearn-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 1rem;
+}
+
+.accesslearn-progress label {
+  font-weight: 700;
+}
+
+.accesslearn-progress progress {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 1rem;
+  accent-color: #0b6b57;
+}
+
+.accesslearn-progress-status {
+  min-height: 1.5rem;
+  margin: 0.5rem 0 0;
+}
+
+.accesslearn-career-bridge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #9bb8bf;
+}
+
+.accesslearn-career-bridge p {
+  flex: 1 1 20rem;
+  margin: 0;
+}
+
+.savanna-styles .accesslearn-career-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 2px solid #0b3b4c;
+  border-radius: 0.4rem;
+  background: #0b3b4c;
+  color: #ffffff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.savanna-styles .accesslearn-career-link:visited,
+.savanna-styles .accesslearn-career-link:hover {
+  color: #ffffff;
+}
+
+.savanna-styles .accesslearn-career-link:hover {
+  background: #125e70;
+}
+
+.savanna-styles .accesslearn-career-link:focus-visible {
+  outline: 3px solid #005fcc;
+  outline-offset: 3px;
+}
+
+@media (max-width: 36rem) {
+  .accesslearn-progress {
+    grid-template-columns: 1fr;
+  }
+
+  .accesslearn-progress output {
+    justify-self: start;
+  }
+
+  .accesslearn-career-link {
+    width: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .accesslearn-module,
+  .savanna-styles .accesslearn-career-link {
+    border-color: CanvasText;
+  }
+}

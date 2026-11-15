@@ -6,6 +6,7 @@
   <title>AccessLearn in Savanna Fixture</title>
   <link rel="stylesheet" href="assets/css/application_alx.css">
   <link rel="stylesheet" href="assets/css/app.css">
+  <link rel="stylesheet" href="assets/css/accesslearn-integration.css">
   <style>
     .fixture-shell { max-width: 1180px; margin: 0 auto; padding: 1rem; }
     .fixture-banner { border: 2px solid #db3e3e; padding: 0.75rem; margin-bottom: 1rem; background: #fff; }
@@ -19,30 +20,40 @@
     <p class="fixture-banner">
       This is an isolated integration fixture built from the supplied global Savanna styles. It is not the missing Rails/React source application.
     </p>
-    <article>
-      <h1>Accessible lesson</h1>
-      <div id="accesslearn-lesson"></div>
+    <article
+      class="accesslearn-module"
+      data-accesslearn-integration
+      data-api-base="https://localhost:7121"
+      data-sdk-src="https://localhost:7121/sdk/v1/accesslearn-player.min.js"
+      data-lesson-id=""
+    >
+      <h1 id="accessible-lesson-title">Accessible lesson</h1>
+      <p data-player-instructions>
+        Add <code>?lesson=&lt;published-lesson-id&gt;&amp;locale=en</code> to this URL to load the player.
+      </p>
+      <accesslearn-player
+        id="accesslearn-lesson"
+        aria-describedby="accesslearn-progress-status"
+        hidden
+      ></accesslearn-player>
+      <div class="accesslearn-progress">
+        <label for="accesslearn-progress">Lesson progress</label>
+        <output data-lesson-progress-value for="accesslearn-progress">0%</output>
+        <progress id="accesslearn-progress" data-lesson-progress max="100" value="0">0%</progress>
+      </div>
+      <p
+        class="accesslearn-progress-status"
+        id="accesslearn-progress-status"
+        data-lesson-progress-status
+        role="status"
+        aria-live="polite"
+      ></p>
+      <div class="accesslearn-career-bridge">
+        <p>Continue from accessible learning media to roles and public credential verification.</p>
+        <a class="accesslearn-career-link" href="pages/jobs.html">Explore career opportunities</a>
+      </div>
     </article>
   </main>
-  <script>
-    const parameters = new URLSearchParams(location.search);
-    const apiBase = "https://localhost:7121";
-    const lessonId = parameters.get("lesson");
-    const script = document.createElement("script");
-    script.src = `${apiBase.replace(/\/$/, "")}/sdk/v1/accesslearn-player.min.js`;
-    script.defer = true;
-    script.addEventListener("load", () => {
-      if (!lessonId) {
-        document.getElementById("accesslearn-lesson").textContent = "Add ?lesson=<published-lesson-id> to load the player.";
-        return;
-      }
-      window.AccessLearn.mount("#accesslearn-lesson", {
-        lessonId,
-        apiBase,
-        locale: parameters.get("locale") === "am" ? "am" : "en"
-      });
-    });
-    document.head.append(script);
-  </script>
+  <script src="assets/js/accesslearn-savanna.js"></script>
 </body>
 </html>

@@ -3,6 +3,7 @@ import { playerStyles } from "./styles";
 import type {
   AccessLearnPlayerElement,
   CaptionTrack,
+  PlayerProgressEventDetail,
   PlayerConfig,
   PlayerManifest,
   PlayerState,
@@ -13,6 +14,7 @@ import type {
 const PREFERENCES_KEY = "accesslearn-player:v1:preferences";
 const SEEK_SECONDS = 10;
 const SIGN_DRIFT_SECONDS = 0.35;
+const PROGRESS_EVENT_INTERVAL_SECONDS = 5;
 
 interface PlayerPreferences {
   captionScale: number;
@@ -61,6 +63,8 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
   #resourceRefreshAttempts = 0;
   #configuring = false;
   #activeSegmentSequence: number | null = null;
+  #lastProgressEventTime: number | null = null;
+  #completionEmitted = false;
 
   constructor() {
     super();
@@ -262,6 +266,8 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       this.#transcriptOpen = this.#preferences.transcriptOpen;
       this.#restorePrimaryMuted = false;
       this.#activeSegmentSequence = null;
+      this.#lastProgressEventTime = null;
+      this.#completionEmitted = false;
     }
     this.#locale = normalizeLocale(this.getAttribute("locale"));
     this.lang = this.#locale;
@@ -520,12 +526,16 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     this.#bindSignMovement(signal);
     this.addEventListener("keydown", (event) => this.#onKeyDown(event), { signal });
     document.addEventListener("fullscreenchange", () => this.#refreshFullscreenControl(), { signal });
-    media.addEventListener("loadedmetadata", () => this.#refreshTimeline(), { signal });
+    media.addEventListener("loadedmetadata", () => {
+      this.#refreshTimeline();
+      this.#emitProgress(true);
+    }, { signal });
     media.addEventListener("durationchange", () => this.#refreshTimeline(), { signal });
     media.addEventListener("timeupdate", () => {
       this.#refreshTimeline();
       this.#renderActiveSegment();
       this.#syncSecondary(false);
+      this.#emitProgress();
     }, { signal });
     media.addEventListener("play", () => {
       this.#refreshPlayControl();
@@ -539,7 +549,11 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       this.#emit("accesslearn:pause", {});
     }, { signal });
     media.addEventListener("seeking", () => this.#syncSecondary(true), { signal });
-    media.addEventListener("seeked", () => this.#emit("accesslearn:seeked", { currentTime: media.currentTime }), { signal });
+    media.addEventListener("seeked", () => {
+      this.#emit("accesslearn:seeked", { currentTime: media.currentTime });
+      this.#emitProgress(true);
+    }, { signal });
+    media.addEventListener("ended", () => this.#emitCompletion(), { signal });
     media.addEventListener("volumechange", () => this.#refreshMuteControl(), { signal });
     media.addEventListener("error", () => void this.#handleResourceError("MEDIA_FAILED"), { signal });
     this.#signMedia()?.addEventListener("error", () => void this.#handleSecondaryFailure("sign"), { signal });
@@ -1077,7 +1091,54 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     status.classList.toggle("error", error);
   }
 
-  #emit(name: string, detail: Record<string, unknown>): void {
+  #emitProgress(force = false): void {
+    const detail = this.#progressDetail();
+    if (!detail) return;
+    if (!force && this.#lastProgressEventTime !== null &&
+        Math.abs(detail.currentTime - this.#lastProgressEventTime) < PROGRESS_EVENT_INTERVAL_SECONDS &&
+        detail.progress < 1) {
+      return;
+    }
+    this.#lastProgressEventTime = detail.currentTime;
+    this.#emit("db-player:progress", detail);
+  }
+
+  #emitCompletion(): void {
+    if (this.#completionEmitted) return;
+    const detail = this.#progressDetail();
+    if (!detail) return;
+    this.#completionEmitted = true;
+    this.#emitProgress(true);
+    this.#emit("db-player:complete", {
+      ...detail,
+      progress: 1,
+      percent: 100,
+      completedAt: new Date().toISOString()
+    });
+  }
+
+  #progressDetail(): PlayerProgressEventDetail | null {
+    const manifest = this.#manifest;
+    const media = this.#media();
+    if (!manifest || !media) return null;
+    const mediaDuration = Number.isFinite(media.duration) && media.duration > 0
+      ? media.duration
+      : manifest.media.durationMilliseconds / 1000;
+    if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return null;
+    const currentTime = Math.max(0, Math.min(mediaDuration, media.currentTime));
+    const progress = Math.max(0, Math.min(1, currentTime / mediaDuration));
+    return {
+      lessonId: manifest.lessonId,
+      publicationId: manifest.publicationId,
+      revision: manifest.revision,
+      currentTime,
+      duration: mediaDuration,
+      progress,
+      percent: Math.round(progress * 100)
+    };
+  }
+
+  #emit(name: string, detail: unknown): void {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
   }
 

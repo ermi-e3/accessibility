@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Public verification for an AccessLearn Ethiopia learning certificate." />
+    <title>Verify Certificate | AccessLearn Ethiopia</title>
+    <link rel="stylesheet" href="../assets/css/typekit-xgz4ilr-css.css" />
+    <link rel="stylesheet" href="../assets/css/application_alx.css" media="all" />
+    <link rel="stylesheet" href="../assets/css/app.css" media="all" />
+    <link rel="stylesheet" href="../assets/css/career-gateway.css" media="all" />
+    <script type="application/ld+json" id="open-badge-credential-data">
+      {
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2",
+          "https://purl.imsglobal.org/spec/ob/v3p0/context-3.0.3.json"
+        ],
+        "id": "https://accesslearn.example/credentials/ALX-VA1-AMARA-2026",
+        "type": ["VerifiableCredential", "OpenBadgeCredential"],
+        "name": "VA Foundations and Professional Identity Certificate",
+        "issuer": {
+          "id": "https://accesslearn.example/issuers/accesslearn-ethiopia",
+          "type": ["Profile"],
+          "name": "AccessLearn Ethiopia"
+        },
+        "validFrom": "2026-11-15T00:00:00Z",
+        "credentialSubject": {
+          "id": "urn:uuid:019a85d7-34ef-7c80-b51c-6930c7ce7641",
+          "type": ["AchievementSubject"],
+          "name": "Amara Nwosu",
+          "achievement": {
+            "id": "https://accesslearn.example/achievements/va-foundations",
+            "type": ["Achievement"],
+            "name": "VA Foundations and Professional Identity",
+            "description": "Completed the accessible learning pathway covering virtual assistant industry trends, digital tools, professional communication, and future-ready work practices.",
+            "achievementType": "Certificate",
+            "criteria": {
+              "narrative": "Complete all required learning media and the end-of-module knowledge check."
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body class="career-page">
+    <a class="career-skip-link" href="#main-content">Skip to certificate verification</a>
+    <header class="career-topbar">
+      <a class="career-brand" href="../index.html">
+        <img src="../assets/img/holberton-logo-full-alx.png" alt="" />
+        <span>AccessLearn Credential Registry</span>
+      </a>
+      <nav class="career-nav" aria-label="Credential registry">
+        <a href="concept-with-navigation.html">Learning media</a>
+        <a href="jobs.html">Career Gateway</a>
+      </nav>
+    </header>
+
+    <main class="career-main" id="main-content">
+      <p class="career-eyebrow">Public credential verification</p>
+      <div
+        class="verification-shell"
+        data-certificate-verifier
+        data-credential-id="ALX-VA1-AMARA-2026"
+      >
+        <article class="certificate-card" data-certificate-record aria-labelledby="certificate-title">
+          <p class="certificate-kicker">Verified learning achievement</p>
+          <h1 id="certificate-title">VA Foundations and Professional Identity</h1>
+          <p>
+            This public record confirms that the named learner completed the listed AccessLearn Ethiopia pathway.
+          </p>
+          <dl class="certificate-details">
+            <dt>Learner</dt>
+            <dd>Amara Nwosu</dd>
+            <dt>Credential ID</dt>
+            <dd><code>ALX-VA1-AMARA-2026</code></dd>
+            <dt>Issued</dt>
+            <dd><time datetime="2026-11-15">15 November 2026</time></dd>
+            <dt>Issuer</dt>
+            <dd>AccessLearn Ethiopia</dd>
+            <dt>Achievement</dt>
+            <dd>VA-1: VA Foundations and Professional Identity</dd>
+            <dt>Status</dt>
+            <dd>Current public registry record</dd>
+          </dl>
+
+          <h2 class="h4">Skills demonstrated</h2>
+          <ul>
+            <li>Professional remote communication and client support</li>
+            <li>Responsible use of digital and AI productivity tools</li>
+            <li>Adaptability, workflow organization, and career planning</li>
+          </ul>
+
+          <div class="certificate-actions">
+            <a class="career-button" href="jobs.html">Explore matched opportunities</a>
+            <button class="career-button secondary" type="button" data-copy-verification>
+              Copy verification link
+            </button>
+          </div>
+          <p class="copy-status" data-copy-status aria-live="polite"></p>
+        </article>
+
+        <aside class="verification-panel" aria-labelledby="verify-title">
+          <h2 id="verify-title">Check a credential</h2>
+          <form class="verify-form" method="get">
+            <label for="credential-id">Credential ID</label>
+            <div class="verify-form-row">
+              <input
+                id="credential-id"
+                name="id"
+                type="text"
+                autocomplete="off"
+                required
+                data-credential-input
+              />
+              <button class="career-button" type="submit">Verify</button>
+            </div>
+          </form>
+          <p class="verification-status" data-verification-status role="status" aria-live="polite">
+            Checking the public certificate registry.
+          </p>
+
+          <h2 class="h5">Employer verification link</h2>
+          <p><a data-verification-link href="certificate.html?id=ALX-VA1-AMARA-2026">Open verification record</a></p>
+
+          <div class="standards-note">
+            <h2 class="h5">Credential standard</h2>
+            <p>
+              The page exposes an Open Badges 3.0-shaped JSON-LD record. This prototype verifies the public registry
+              entry; a production issuer must also add cryptographic proof before claiming signed verification.
+            </p>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="career-footer">
+      <p>Public AccessLearn Ethiopia credential registry prototype.</p>
+    </footer>
+    <script defer src="../assets/js/certificate-verification.js"></script>
+  </body>
+</html>
