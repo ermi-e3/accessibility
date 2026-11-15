@@ -3,95 +3,131 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Savanna static pages</title>
+    <meta name="description" content="AccessLearn Ethiopia judge showcase for accessible learning and careers." />
+    <title>AccessLearn Ethiopia | Judge Showcase</title>
+    <link rel="stylesheet" href="assets/css/typekit-xgz4ilr-css.css" />
     <link rel="stylesheet" href="assets/css/application_alx.css" media="all" />
     <link rel="stylesheet" href="assets/css/app.css" media="all" />
-    <style>
-      body { padding: 2rem 1rem; }
-      .page-card { max-width: 46rem; }
-    </style>
+    <link rel="stylesheet" href="assets/css/judge-showcase.css" media="all" />
   </head>
-  <body class="bg-body-tertiary">
-    <main class="container-lg">
-      <h1 class="mb-1">Savanna static pages</h1>
-      <p class="text-body-secondary mb-4">
-        Savanna learner captures plus the AccessLearn Track 2 player and Career Gateway integration.
-        The frozen starter interactions continue to work, while the new pages add accessible learning
-        progress, job summaries, structured job data, and public certificate verification.
-      </p>
+  <body class="judge-page">
+    <a class="judge-skip" href="#main-content">Skip to demo route</a>
+    <header class="judge-topbar">
+      <a class="judge-brand" href="index.html">
+        <img src="assets/img/holberton-logo-full-alx.png" alt="" />
+        <span>AccessLearn Ethiopia</span>
+      </a>
+      <span class="judge-track">Digital Bridge Track 2</span>
+    </header>
 
-      <div class="vstack gap-3 page-card">
-        <div class="card">
-          <div class="card-body">
-            <h2 class="h5 card-title"><a href="pages/homepage-v1-paced.html">Learner homepage — v1 paced</a></h2>
-            <p class="card-text mb-0">
-              Björn Sibanda, week 10 of <strong>WR 100: Fundamentals of Effective Communication</strong>
-              (cohort F26-SEM-16W, 31&nbsp;Aug – 20&nbsp;Dec 2026). Courses dropdown, a week strip with all
-              16 weeks preloaded, “continue where you left off”, immediate deliverables, period
-              progress, overall score and upcoming events.
-            </p>
+    <main class="judge-main" id="main-content">
+      <section class="judge-hero" aria-labelledby="showcase-title">
+        <div>
+          <p class="judge-eyebrow">Judge showcase</p>
+          <h1 id="showcase-title">One accessible path from learning to work.</h1>
+          <p class="judge-hero-copy">
+            Start with a captioned Savanna lesson, continue into accessible career opportunities, then verify
+            the learner's certificate. Every module is local, linked, and ready to demonstrate.
+          </p>
+          <div class="judge-actions">
+            <a class="judge-button" href="pages/concept-with-navigation.html#accessible-lesson-title">Start the 3-minute demo</a>
+            <a class="judge-button secondary" href="pages/jobs.html">Open Career Gateway</a>
           </div>
         </div>
+        <aside class="judge-hero-note" aria-label="Demo summary">
+          <strong>3 steps</strong>
+          <p>Player, opportunity, proof.</p>
+          <p>No login, database, or network connection is required for the judge route.</p>
+        </aside>
+      </section>
 
-        <div class="card">
-          <div class="card-body">
-            <h2 class="h5 card-title"><a href="pages/homepage-v1-self-paced.html">Learner homepage — v1 self-paced</a></h2>
-            <p class="card-text mb-0">
-              Amara Nwosu, module 1 of 3 complete on <strong>VA-1: VA Foundations &amp; Professional Identity</strong>.
-              Course-progression gauge against the 70% graduation threshold, a working module
-              switcher, the programme modal preloaded, pacing boost and upcoming events.
-            </p>
-          </div>
+      <section class="judge-section" aria-labelledby="route-title">
+        <div class="judge-section-heading">
+          <h2 id="route-title">Follow the judge route</h2>
+          <p>Each step links directly to the next, so the complete Track 2 story can be shown without setup screens.</p>
         </div>
+        <nav aria-label="Judge demo modules">
+          <ol class="judge-route">
+            <li>
+              <div>
+                <h3>Watch the accessible sample lesson</h3>
+                <p>Press Play, toggle captions, open the searchable transcript, and finish the 25-second sample.</p>
+                <div class="judge-tags"><span>Web Component</span><span>WebVTT</span><span>Keyboard</span><span>Progress events</span></div>
+              </div>
+              <a class="judge-route-link" href="pages/concept-with-navigation.html#accessible-lesson-title">Open lesson</a>
+            </li>
+            <li>
+              <div>
+                <h3>Explore the Career Gateway</h3>
+                <p>Review responsive job cards and activate a browser-spoken job summary without hiding the text.</p>
+                <div class="judge-tags"><span>200% reflow</span><span>Speech synthesis</span><span>JobPosting JSON-LD</span></div>
+              </div>
+              <a class="judge-route-link" href="pages/jobs.html">Open jobs</a>
+            </li>
+            <li>
+              <div>
+                <h3>Verify the learning certificate</h3>
+                <p>Open a public employer-facing registry URL and inspect the Open Badges-shaped achievement record.</p>
+                <div class="judge-tags"><span>Public verification</span><span>Open Badges 3.0</span><span>Shareable URL</span></div>
+              </div>
+              <a class="judge-route-link" href="pages/certificate.html?id=ALX-VA1-AMARA-2026">Verify certificate</a>
+            </li>
+          </ol>
+        </nav>
+      </section>
 
-        <div class="card">
-          <div class="card-body">
-            <h2 class="h5 card-title"><a href="pages/concept-with-navigation.html">Concept page with curriculum navigation</a></h2>
-            <p class="card-text mb-0">
-              “The Future of the VA Industry” — a module&nbsp;2 concept with the navigation panel beside it,
-              showing read, current and unread activities, plus the full set of authored content blocks
-              (callouts, card grids, comparison columns). The language toggle, the “Need a Fast Track?”
-              block and the Padlet embed are removed.
-            </p>
-          </div>
+      <section class="judge-section" aria-labelledby="evidence-title">
+        <div class="judge-section-heading">
+          <h2 id="evidence-title">Evidence behind the demo</h2>
+          <p>The showcase distinguishes generated drafts from reviewed accessibility content.</p>
         </div>
-
-        <div class="card">
-          <div class="card-body">
-            <h2 class="h5 card-title"><a href="pages/jobs.html">Career Gateway and Skill Portal</a></h2>
-            <p class="card-text mb-0">
-              Accessible sample job cards with user-triggered speech summaries, responsive 200% zoom reflow,
-              certificate verification links, and <code>JobPosting</code> JSON-LD.
-            </p>
-          </div>
+        <div class="judge-evidence-grid">
+          <article class="judge-evidence">
+            <span class="judge-status">Working sample</span>
+            <h3>Caption extraction and review</h3>
+            <p>The local video is transcribed offline into a draft, then the reviewed WebVTT track is published.</p>
+            <ul>
+              <li><a href="assets/media/accesslearn-demo/sample-captions.draft.vtt">Open machine draft VTT</a></li>
+              <li><a href="assets/media/accesslearn-demo/sample-captions.en.vtt">Open reviewed VTT</a></li>
+              <li><a href="assets/media/accesslearn-demo/sample-transcript.en.json">Open transcript JSON</a></li>
+            </ul>
+          </article>
+          <article class="judge-evidence">
+            <span class="judge-status">Host integrated</span>
+            <h3>Digital Bridge events</h3>
+            <p>The Savanna host listens for <code>db-player:progress</code> and <code>db-player:complete</code>, announces updates, and stores demo progress locally.</p>
+          </article>
+          <article class="judge-evidence">
+            <span class="judge-status">Automated checks</span>
+            <h3>Accessibility gates</h3>
+            <p>Playwright and axe cover the judge pages, speech controls, public verification, player loading, and 200% zoom-equivalent reflow.</p>
+          </article>
         </div>
-
-        <div class="card">
-          <div class="card-body">
-            <h2 class="h5 card-title">
-              <a href="pages/certificate.html?id=ALX-VA1-AMARA-2026">Public certificate verification</a>
-            </h2>
-            <p class="card-text mb-0">
-              Shareable credential verification with a public registry result and an Open Badges 3.0-shaped
-              JSON-LD achievement record.
-            </p>
-          </div>
+        <div class="judge-caption-compare" aria-label="Caption review example">
+          <div><h3>Machine draft</h3><code>how inaccessible video player connects learning...</code></div>
+          <div><h3>Human-reviewed publication</h3><code>how an accessible video player connects learning...</code></div>
         </div>
+      </section>
 
-        <div class="card">
-          <div class="card-body">
-            <h2 class="h5 card-title"><a href="player-integration.html">Standalone player integration fixture</a></h2>
-            <p class="card-text mb-0">
-              A focused host fixture for the player, Digital Bridge progress events, completion state, and the
-              transition into career opportunities.
-            </p>
-          </div>
+      <section class="judge-section" aria-labelledby="starter-title">
+        <div class="judge-section-heading">
+          <h2 id="starter-title">Savanna starter references</h2>
+          <p>The original static captures remain available, but they are secondary to the integrated judge route.</p>
         </div>
-      </div>
-
-      <p class="mt-4 text-body-secondary">
-        See <code>README.md</code> for what is real, what was substituted, and how to regenerate.
-      </p>
+        <details class="judge-references">
+          <summary>Open original learner page captures</summary>
+          <div class="judge-reference-links">
+            <a href="pages/homepage-v1-paced.html">Paced learner homepage</a>
+            <a href="pages/homepage-v1-self-paced.html">Self-paced learner homepage</a>
+            <a href="pages/concept-with-navigation.html">Integrated concept page</a>
+            <a href="player-integration.html">Standalone player fixture</a>
+          </div>
+        </details>
+      </section>
     </main>
+
+    <footer class="judge-footer">
+      <p>AccessLearn Ethiopia: accessible learning media connected to career opportunity and verifiable proof.</p>
+    </footer>
   </body>
 </html>

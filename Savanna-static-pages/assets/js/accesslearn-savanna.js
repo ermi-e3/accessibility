@@ -36,8 +36,12 @@
 
     const lessonId = query.get('lesson') || root.dataset.lessonId || '';
     const locale = query.get('locale') === 'am' ? 'am' : 'en';
-    const apiBase = root.dataset.apiBase;
-    const sdkSource = root.dataset.sdkSrc;
+    const configuredApiBase = root.dataset.apiBase;
+    const configuredSdkSource = root.dataset.sdkSrc;
+    const apiBase = configuredApiBase === 'same-origin' && ['http:', 'https:'].includes(window.location.protocol)
+      ? window.location.origin
+      : configuredApiBase;
+    const sdkSource = configuredSdkSource ? new URL(configuredSdkSource, document.baseURI).href : '';
 
     function renderPercent(percent, message) {
       const safePercent = Math.max(0, Math.min(100, Math.round(percent)));

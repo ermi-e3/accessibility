@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title description">
+  <title id="title">From Accessible Learning to Career Opportunity</title>
+  <desc id="description">AccessLearn Ethiopia sample lesson poster.</desc>
+  <defs><linearGradient id="background" x2="1" y2="1"><stop stop-color="#102f3b"/><stop offset="1" stop-color="#075041"/></linearGradient></defs>
+  <rect width="960" height="540" fill="url(#background)"/>
+  <rect width="28" height="540" fill="#f4c95d"/>
+  <circle cx="870" cy="80" r="150" fill="#fff" opacity=".08"/>
+  <text x="78" y="100" fill="#f4c95d" font-family="Arial,sans-serif" font-size="25" font-weight="700">ACCESSLEARN ETHIOPIA</text>
+  <text x="78" y="215" fill="#fff" font-family="Arial,sans-serif" font-size="42" font-weight="700">Accessible learning</text>
+  <text x="78" y="270" fill="#fff" font-family="Arial,sans-serif" font-size="42" font-weight="700">to career opportunity</text>
+  <text x="78" y="390" fill="#f4c95d" font-family="Arial,sans-serif" font-size="28" font-weight="700">Captions and transcript included</text>
+</svg>

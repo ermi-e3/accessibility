@@ -1,0 +1,39 @@
+{
+    "schemaVersion":  "1.0",
+    "lessonId":  "demo-accessible-careers",
+    "publicationId":  "8ed95274-f7dd-4d4d-a490-975d4377b2b5",
+    "revision":  1,
+    "title":  "From Accessible Learning to Career Opportunity",
+    "sourceLanguage":  "en",
+    "expiresAt":  "2099-12-31T23:59:59Z",
+    "media":  {
+                  "url":  "/assets/media/accesslearn-demo/sample-lesson.webm",
+                  "contentType":  "video/webm",
+                  "durationMilliseconds":  25280,
+                  "posterUrl":  "/assets/media/accesslearn-demo/sample-poster.svg"
+              },
+    "captions":  [
+                     {
+                         "language":  "en",
+                         "label":  "English (reviewed)",
+                         "url":  "/assets/media/accesslearn-demo/sample-captions.en.vtt",
+                         "isDefault":  true,
+                         "isHumanReviewed":  true
+                     }
+                 ],
+    "transcripts":  [
+                        {
+                            "language":  "en",
+                            "label":  "English transcript",
+                            "url":  "/assets/media/accesslearn-demo/sample-transcript.en.json",
+                            "isHumanReviewed":  true
+                        }
+                    ],
+    "signLanguage":  null,
+    "audioDescription":  null,
+    "warnings":  [
+                     "missingAmharicCaptions",
+                     "missingSignLanguage",
+                     "missingAudioDescription"
+                 ]
+}

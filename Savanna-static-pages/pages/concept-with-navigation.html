@@ -550,14 +550,18 @@
                     class="accesslearn-module"
                     aria-labelledby="accessible-lesson-title"
                     data-accesslearn-integration
-                    data-api-base="https://localhost:7121"
-                    data-sdk-src="https://localhost:7121/sdk/v1/accesslearn-player.min.js"
-                    data-lesson-id=""
+                    data-api-base="same-origin"
+                    data-sdk-src="../assets/js/accesslearn-player.min.js"
+                    data-lesson-id="demo-accessible-careers"
                   >
                     <h2 id="accessible-lesson-title">Accessible lesson media</h2>
+                    <p>
+                      This rights-safe local sample includes reviewed English captions and a searchable transcript.
+                      Use the player controls to compare both formats before continuing to the Career Gateway.
+                    </p>
                     <p data-player-instructions>
-                      To load a published lesson in this static fixture, add
-                      <code>?lesson=&lt;published-lesson-id&gt;&amp;locale=en</code> to the page URL.
+                      Loading the sample lesson. A deployed host can replace it with
+                      <code>?lesson=&lt;published-lesson-id&gt;&amp;locale=en</code>.
                     </p>
                     <accesslearn-player
                       id="accesslearn-lesson"
