@@ -60,4 +60,10 @@
   <data name="ProcessorUnavailableTitle" xml:space="preserve">
     <value>The media inspection service is unavailable.</value>
   </data>
+  <data name="PreconditionRequiredTitle" xml:space="preserve">
+    <value>The current resource version is required.</value>
+  </data>
+  <data name="VersionConflictTitle" xml:space="preserve">
+    <value>The resource changed before this operation completed.</value>
+  </data>
 </root>

@@ -9,6 +9,7 @@
 
 .kilo/
 .tools/
+src/accessibility.Api/wwwroot/sdk/
 problems.md
 prompt.md
 Build Prompt.md

@@ -51,6 +51,10 @@ public sealed class MediaAsset : AuditableEntity
 
     public bool IsActive { get; private set; } = true;
 
+    public bool IsHumanReviewed { get; private set; }
+
+    public string? AccessibilityMode { get; private set; }
+
     public void MarkReady(long? durationMilliseconds, int? width, int? height, string? codec)
     {
         if (durationMilliseconds is <= 0)
@@ -68,6 +72,38 @@ public sealed class MediaAsset : AuditableEntity
     public void MarkStale()
     {
         Status = ResourceStatus.Stale;
+    }
+
+    public void ConfirmAccessibilityReview(string mode)
+    {
+        if (Role is not (MediaAssetRole.SignLanguage or MediaAssetRole.AudioDescription))
+        {
+            throw new InvalidOperationException("Only accessibility tracks require this review metadata.");
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(mode);
+        IsHumanReviewed = true;
+        AccessibilityMode = mode.Trim().ToLowerInvariant();
+    }
+
+    public void StageAsReplacement()
+    {
+        if (Status != ResourceStatus.Pending)
+        {
+            throw new InvalidOperationException("Only a pending asset can be staged as a replacement.");
+        }
+
+        IsActive = false;
+    }
+
+    public void Activate()
+    {
+        if (Status != ResourceStatus.Ready)
+        {
+            throw new InvalidOperationException("Only a ready asset can become active.");
+        }
+
+        IsActive = true;
     }
 
     public void Reject()

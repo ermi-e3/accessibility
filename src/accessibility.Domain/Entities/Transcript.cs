@@ -15,7 +15,9 @@ public sealed class Transcript : AuditableEntity
         int revision,
         TranscriptOrigin origin,
         long sourceLessonRevision,
-        Guid? sourceTranscriptId = null)
+        Guid? sourceTranscriptId = null,
+        Guid? sourceMediaAssetId = null,
+        long? sourceMediaVersion = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(revision, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(sourceLessonRevision, 1);
@@ -25,6 +27,8 @@ public sealed class Transcript : AuditableEntity
         Origin = origin;
         SourceLessonRevision = sourceLessonRevision;
         SourceTranscriptId = sourceTranscriptId;
+        SourceMediaAssetId = sourceMediaAssetId;
+        SourceMediaVersion = sourceMediaVersion;
     }
 
     public Guid LessonId { get; private set; }
@@ -38,6 +42,10 @@ public sealed class Transcript : AuditableEntity
     public Guid? SourceTranscriptId { get; private set; }
 
     public long SourceLessonRevision { get; private set; }
+
+    public Guid? SourceMediaAssetId { get; private set; }
+
+    public long? SourceMediaVersion { get; private set; }
 
     public ReviewStatus ReviewStatus { get; private set; } = ReviewStatus.Draft;
 

@@ -60,4 +60,10 @@
   <data name="ProcessorUnavailableTitle" xml:space="preserve">
     <value>የሚዲያ ምርመራ አገልግሎቱ አይገኝም።</value>
   </data>
+  <data name="PreconditionRequiredTitle" xml:space="preserve">
+    <value>የአሁኑ የሀብት ስሪት ያስፈልጋል።</value>
+  </data>
+  <data name="VersionConflictTitle" xml:space="preserve">
+    <value>ክዋኔው ከመጠናቀቁ በፊት ሀብቱ ተቀይሯል።</value>
+  </data>
 </root>

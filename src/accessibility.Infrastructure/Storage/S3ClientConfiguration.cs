@@ -5,11 +5,11 @@ namespace Accessibility.Infrastructure.Storage;
 
 internal static class S3ClientConfiguration
 {
-    public static AmazonS3Config Create(ObjectStorageOptions options)
+    public static AmazonS3Config Create(ObjectStorageOptions options, string? serviceUrl = null)
     {
         return new AmazonS3Config
         {
-            ServiceURL = options.ServiceUrl.TrimEnd('/'),
+            ServiceURL = (serviceUrl ?? options.ServiceUrl).TrimEnd('/'),
             AuthenticationRegion = options.Region,
             ForcePathStyle = options.ForcePathStyle,
             RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,

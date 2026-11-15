@@ -1,11 +1,13 @@
 using Accessibility.Application.Abstractions;
 using Accessibility.Application.Authorization;
 using Accessibility.Application.Features.Lessons;
+using Accessibility.Application.Features.Player;
 using Accessibility.Infrastructure.Authorization;
 using Accessibility.Infrastructure.Health;
 using Accessibility.Infrastructure.Identity;
 using Accessibility.Infrastructure.Persistence;
 using Accessibility.Infrastructure.Processing;
+using Accessibility.Infrastructure.Player;
 using Accessibility.Infrastructure.Storage;
 using Amazon.Runtime;
 using Amazon.S3;
@@ -117,6 +119,12 @@ public static class DependencyInjection
                 policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
                 policy.RequireAuthenticatedUser();
                 policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.ResourcesWrite));
+            })
+            .AddPolicy(AccessLearnPolicies.LessonsPublish, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.LessonsPublish));
             });
         services.AddSingleton<IAuthorizationHandler, ScopeOrRoleHandler>();
 
@@ -146,6 +154,19 @@ public static class DependencyInjection
         services.AddHostedService<UploadQuarantineCleanupService>();
         services.AddSingleton<IMediaProbe, FfprobeMediaProbe>();
         services.AddScoped<ILessonIngestService, LessonIngestService>();
+        services
+            .AddOptions<PlayerDeliveryOptions>()
+            .Bind(configuration.GetSection(PlayerDeliveryOptions.SectionName))
+            .Validate(
+                options => options.SignedUrlMinutes is >= 1 and <= 10_080,
+                "PlayerDelivery:SignedUrlMinutes must be between 1 and 10080.")
+            .Validate(
+                options => Uri.TryCreate(options.PublicApiBaseUrl, UriKind.Absolute, out var uri) &&
+                           (uri.Scheme == Uri.UriSchemeHttps ||
+                            (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)),
+                "PlayerDelivery:PublicApiBaseUrl must use HTTPS or loopback HTTP.")
+            .ValidateOnStart();
+        services.AddScoped<IPlayerPublicationService, PlayerPublicationService>();
 
         services
             .AddOptions<BootstrapAdminOptions>()
@@ -158,6 +179,12 @@ public static class DependencyInjection
                 options => Uri.TryCreate(options.ServiceUrl, UriKind.Absolute, out var uri) &&
                            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps),
                 "ObjectStorage:ServiceUrl must be an absolute HTTP or HTTPS URL.")
+            .Validate(
+                options => !string.IsNullOrWhiteSpace(options.PublicServiceUrl) &&
+                           Uri.TryCreate(options.PublicServiceUrl, UriKind.Absolute, out var uri) &&
+                            (uri.Scheme == Uri.UriSchemeHttps ||
+                             (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)),
+                "ObjectStorage:PublicServiceUrl must use HTTPS or loopback HTTP.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.AccessKey), "ObjectStorage:AccessKey is required.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.SecretKey), "ObjectStorage:SecretKey is required.")
             .Validate(options => !string.IsNullOrWhiteSpace(options.BucketName), "ObjectStorage:BucketName is required.")

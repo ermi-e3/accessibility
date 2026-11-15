@@ -28,7 +28,32 @@ public sealed class CaptionArtifact : AuditableEntity
 
     public string Checksum { get; private set; } = string.Empty;
 
-    public ResourceStatus Status { get; private set; } = ResourceStatus.Ready;
+    public ResourceStatus Status { get; private set; } = ResourceStatus.Pending;
+
+    public void MarkReady()
+    {
+        if (Status != ResourceStatus.Pending)
+        {
+            throw new InvalidOperationException("Only a pending caption artifact can become ready.");
+        }
+
+        Status = ResourceStatus.Ready;
+    }
+
+    public void Fail()
+    {
+        Status = ResourceStatus.Failed;
+    }
+
+    public void Retry()
+    {
+        if (Status != ResourceStatus.Failed)
+        {
+            throw new InvalidOperationException("Only a failed caption artifact can be retried.");
+        }
+
+        Status = ResourceStatus.Pending;
+    }
 
     public void MarkStale()
     {

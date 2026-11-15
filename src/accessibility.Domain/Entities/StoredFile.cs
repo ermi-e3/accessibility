@@ -60,4 +60,15 @@ public sealed class StoredFile : AuditableEntity
     {
         Status = StoredFileStatus.Deleted;
     }
+
+    public void RetryQuarantine()
+    {
+        if (Status != StoredFileStatus.Rejected)
+        {
+            throw new InvalidOperationException("Only a rejected file can return to quarantine.");
+        }
+
+        RejectionReason = null;
+        Status = StoredFileStatus.Quarantined;
+    }
 }

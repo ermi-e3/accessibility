@@ -78,6 +78,9 @@ public sealed class LessonsController(
         [FromQuery] string role,
         [FromQuery] string? language,
         [FromQuery] long syncOffsetMs = 0,
+        [FromQuery] bool reviewed = false,
+        [FromQuery] string? accessibilityMode = null,
+        [FromQuery] bool replaceExisting = false,
         CancellationToken cancellationToken = default)
     {
         if (!TryParseRole(role, out var parsedRole))
@@ -90,7 +93,14 @@ public sealed class LessonsController(
         await using var upload = await multipartReader.ReadAsync(Request, rule.MaximumBytes, cancellationToken);
         var asset = await lessons.IngestAssetAsync(
             lessonId,
-            new AssetIngestCommand(parsedRole, language, syncOffsetMs),
+            new AssetIngestCommand(
+                parsedRole,
+                language,
+                syncOffsetMs,
+                reviewed,
+                accessibilityMode,
+                replaceExisting,
+                replaceExisting ? RequireIfMatch(Request) : null),
             upload,
             cancellationToken);
         return CreatedAtAction(nameof(Get), new { lessonId }, asset);
@@ -112,6 +122,14 @@ public sealed class LessonsController(
     }
 
     private static string ETag(long version) => $"\"{version}\"";
+
+    private static long RequireIfMatch(HttpRequest request)
+    {
+        var value = request.Headers.IfMatch.ToString().Trim().Trim('"');
+        return long.TryParse(value, out var version) && version > 0
+            ? version
+            : throw new PreconditionRequiredException();
+    }
 
     private static RequestValidationException Validation(string field, string message)
     {

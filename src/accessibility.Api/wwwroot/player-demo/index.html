@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AccessLearn Player Demo</title>
+  <style>
+    body { margin: 0; color: #171717; background: #f3f1ec; font-family: system-ui, sans-serif; }
+    main { width: min(78rem, calc(100% - 2rem)); margin: 2rem auto; }
+    h1 { max-width: 30ch; }
+    .notice { padding: 0.8rem 1rem; border-left: 0.35rem solid #8f1d1d; background: #fff; }
+    accesslearn-player { margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AccessLearn framework-neutral player</h1>
+    <p class="notice" id="instructions">Add <code>?lesson=&lt;published-lesson-id&gt;&amp;locale=en</code> to this URL.</p>
+    <accesslearn-player id="demo-player"></accesslearn-player>
+  </main>
+  <script>
+    const parameters = new URLSearchParams(location.search);
+    const lessonId = parameters.get("lesson");
+    if (lessonId) {
+      const player = document.getElementById("demo-player");
+      player.setAttribute("lesson-id", lessonId);
+      player.setAttribute("api-base", location.origin);
+      player.setAttribute("locale", parameters.get("locale") === "am" ? "am" : "en");
+      document.getElementById("instructions").hidden = true;
+    }
+  </script>
+  <script defer src="/sdk/v1/accesslearn-player.min.js"></script>
+</body>
+</html>

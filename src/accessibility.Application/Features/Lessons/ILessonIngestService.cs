@@ -27,7 +27,11 @@ public sealed record LessonListQuery(LessonStatus? Status, string? Cursor, int L
 public sealed record AssetIngestCommand(
     MediaAssetRole Role,
     string? Language,
-    long SyncOffsetMilliseconds);
+    long SyncOffsetMilliseconds,
+    bool IsHumanReviewed = false,
+    string? AccessibilityMode = null,
+    bool ReplaceExisting = false,
+    long? ExpectedLessonVersion = null);
 
 public sealed record LessonModel(
     Guid Id,

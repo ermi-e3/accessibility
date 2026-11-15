@@ -92,6 +92,7 @@ internal sealed class MediaAssetConfiguration : IEntityTypeConfiguration<MediaAs
         builder.Property(asset => asset.Role).HasConversion<string>().HasMaxLength(40).IsRequired();
         builder.Property(asset => asset.Language).HasMaxLength(35);
         builder.Property(asset => asset.Codec).HasMaxLength(100);
+        builder.Property(asset => asset.AccessibilityMode).HasMaxLength(32);
         builder.Property(asset => asset.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
 
         builder.HasOne<Lesson>()
@@ -106,6 +107,9 @@ internal sealed class MediaAssetConfiguration : IEntityTypeConfiguration<MediaAs
         builder.HasIndex(asset => asset.LessonId)
             .IsUnique()
             .HasFilter("is_active = TRUE AND role IN ('PrimaryVideo', 'PrimaryAudio')");
+        builder.HasIndex(asset => new { asset.LessonId, asset.Role })
+            .IsUnique()
+            .HasFilter("is_active = TRUE AND role IN ('SignLanguage', 'AudioDescription')");
         builder.HasIndex(asset => asset.StoredFileId).IsUnique();
         builder.ToTable(table =>
         {
@@ -121,6 +125,12 @@ internal sealed class MediaAssetConfiguration : IEntityTypeConfiguration<MediaAs
             table.HasCheckConstraint(
                 "ck_media_assets_sign_language",
                 "role <> 'SignLanguage' OR language IS NOT NULL AND language = 'eth'");
+            table.HasCheckConstraint(
+                "ck_media_assets_accessibility_review",
+                "role NOT IN ('SignLanguage', 'AudioDescription') OR is_active = FALSE OR " +
+                "is_human_reviewed = TRUE AND " +
+                "((role = 'SignLanguage' AND accessibility_mode = 'human-recorded') OR " +
+                "(role = 'AudioDescription' AND accessibility_mode = 'full-mix'))");
         });
     }
 }
@@ -142,6 +152,10 @@ internal sealed class TranscriptConfiguration : IEntityTypeConfiguration<Transcr
             .WithMany()
             .HasForeignKey(transcript => transcript.SourceTranscriptId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<MediaAsset>()
+            .WithMany()
+            .HasForeignKey(transcript => transcript.SourceMediaAssetId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<ApplicationUser>()
             .WithMany()
             .HasForeignKey(transcript => transcript.ApprovedByUserId)
@@ -151,7 +165,14 @@ internal sealed class TranscriptConfiguration : IEntityTypeConfiguration<Transcr
         builder.HasIndex(transcript => new { transcript.LessonId, transcript.Language, transcript.ReviewStatus })
             .IsUnique()
             .HasFilter("review_status = 'Approved'");
-        builder.ToTable(table => table.HasCheckConstraint("ck_transcripts_revision", "revision > 0 AND source_lesson_revision > 0"));
+        builder.ToTable(table =>
+        {
+            table.HasCheckConstraint("ck_transcripts_revision", "revision > 0 AND source_lesson_revision > 0");
+            table.HasCheckConstraint(
+                "ck_transcripts_source_media",
+                "(source_media_asset_id IS NULL AND source_media_version IS NULL) OR " +
+                "(source_media_asset_id IS NOT NULL AND source_media_version > 0)");
+        });
     }
 }
 

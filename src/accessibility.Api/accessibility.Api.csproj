@@ -7,6 +7,7 @@
     <UserSecretsId>accesslearn-ethiopia-development</UserSecretsId>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <PlayerProjectDirectory>$(MSBuildProjectDirectory)\..\accessibility.Player</PlayerProjectDirectory>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,5 +22,24 @@
     <ProjectReference Include="..\accessibility.Application\accessibility.Application.csproj" />
     <ProjectReference Include="..\accessibility.Infrastructure\accessibility.Infrastructure.csproj" />
   </ItemGroup>
+
+  <Target Name="BuildAccessLearnPlayer"
+          BeforeTargets="ComputeFilesToPublish"
+          Condition="'$(SkipPlayerBuild)' != 'true' and Exists('$(PlayerProjectDirectory)\package.json')">
+    <Exec Command="npm ci" WorkingDirectory="$(PlayerProjectDirectory)" />
+    <Exec Command="npm run build" WorkingDirectory="$(PlayerProjectDirectory)" />
+  </Target>
+
+  <Target Name="IncludeAccessLearnPlayerFiles"
+          AfterTargets="ComputeFilesToPublish"
+          DependsOnTargets="BuildAccessLearnPlayer"
+          Condition="'$(SkipPlayerBuild)' != 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="$(MSBuildProjectDirectory)\wwwroot\sdk\v1\**\*" />
+      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)\wwwroot\sdk\v1\**\*"
+                             RelativePath="wwwroot\sdk\v1\%(RecursiveDir)%(Filename)%(Extension)"
+                             CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 
 </Project>

@@ -5,6 +5,8 @@ public static class AccessLearnScopes
     public const string LessonsRead = "lessons:read";
     public const string LessonsWrite = "lessons:write";
     public const string ResourcesWrite = "resources:write";
+
+    public const string LessonsPublish = "lessons:publish";
 }
 
 public static class AccessLearnClaimTypes

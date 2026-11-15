@@ -244,6 +244,89 @@ public sealed class LessonApiTests
         Assert.Equal(HttpStatusCode.Created, (await second).StatusCode);
     }
 
+    [DatabaseIntegrationFact]
+    public async Task ApprovedTranscriptPublishesPublicManifestAndTranscript()
+    {
+        using var factory = new LessonApiFactory();
+        var owner = await SeedEducatorAsync(factory.Services);
+        var credential = await SeedClientAsync(
+            factory.Services,
+            owner.Id,
+            [
+                AccessLearnScopes.LessonsRead,
+                AccessLearnScopes.LessonsWrite,
+                AccessLearnScopes.ResourcesWrite,
+                AccessLearnScopes.LessonsPublish
+            ]);
+        using var client = factory.CreateSecureClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        var created = await client.PostAsJsonAsync("/api/v1/lessons", LessonRequest());
+        var lessonId = (await JsonDocument.ParseAsync(await created.Content.ReadAsStreamAsync()))
+            .RootElement.GetProperty("id").GetGuid();
+        using var media = Multipart("lesson.wav", "audio/wav", CreateWaveHeader());
+        Assert.Equal(
+            HttpStatusCode.Created,
+            (await client.PostAsync($"/api/v1/lessons/{lessonId}/assets?role=primaryAudio", media)).StatusCode);
+        var transcriptResponse = await client.PostAsJsonAsync(
+            $"/api/v1/lessons/{lessonId}/transcripts",
+            new
+            {
+                language = "en",
+                segments = new[]
+                {
+                    new
+                    {
+                        sequence = 0,
+                        startMilliseconds = 0,
+                        endMilliseconds = 100,
+                        text = "Accessible lesson transcript",
+                        speakerLabel = "Educator"
+                    }
+                }
+            });
+        Assert.Equal(HttpStatusCode.Created, transcriptResponse.StatusCode);
+        using var transcriptJson = await JsonDocument.ParseAsync(await transcriptResponse.Content.ReadAsStreamAsync());
+        var transcriptId = transcriptJson.RootElement.GetProperty("id").GetGuid();
+        var transcriptVersion = transcriptJson.RootElement.GetProperty("version").GetInt64();
+        using var approveRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/transcripts/{transcriptId}/approve");
+        approveRequest.Headers.TryAddWithoutValidation("If-Match", $"\"{transcriptVersion}\"");
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(approveRequest)).StatusCode);
+        var lessonDetail = await client.GetFromJsonAsync<JsonElement>($"/api/v1/lessons/{lessonId}");
+        var lessonVersion = lessonDetail.GetProperty("lesson").GetProperty("version").GetInt64();
+        using var publishRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/lessons/{lessonId}/publish");
+        publishRequest.Headers.TryAddWithoutValidation("If-Match", $"\"{lessonVersion}\"");
+        var publishResponse = await client.SendAsync(publishRequest);
+        Assert.Equal(HttpStatusCode.Created, publishResponse.StatusCode);
+        var publication = await publishResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var publicationId = publication.GetProperty("id").GetGuid();
+
+        using var publicClient = factory.CreateSecureClient();
+        var manifest = await publicClient.GetFromJsonAsync<JsonElement>(
+            $"/api/v1/public/lessons/{lessonId}/manifest");
+        Assert.Equal(lessonId, manifest.GetProperty("lessonId").GetGuid());
+        Assert.Single(manifest.GetProperty("captions").EnumerateArray());
+        Assert.Single(manifest.GetProperty("transcripts").EnumerateArray());
+        var transcript = await publicClient.GetFromJsonAsync<JsonElement>(
+            $"/api/v1/public/lessons/{lessonId}/publications/{publicationId}/transcripts/en");
+        Assert.Equal("Accessible lesson transcript", transcript.GetProperty("segments")[0].GetProperty("text").GetString());
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var database = scope.ServiceProvider.GetRequiredService<AccessLearnDbContext>();
+        var storedSegment = await database.TranscriptSegments.SingleAsync(
+            segment => segment.TranscriptId == transcriptId);
+        storedSegment.Update(0, 100, "Unpublished transcript edit", "Editor");
+        await database.SaveChangesAsync();
+        var frozenTranscript = await publicClient.GetFromJsonAsync<JsonElement>(
+            $"/api/v1/public/lessons/{lessonId}/publications/{publicationId}/transcripts/en");
+        Assert.Equal(
+            "Accessible lesson transcript",
+            frozenTranscript.GetProperty("segments")[0].GetProperty("text").GetString());
+    }
+
     private static object LessonRequest() => new
     {
         title = $"Lesson {Guid.NewGuid():N}",

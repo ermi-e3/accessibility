@@ -501,6 +501,11 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AccessibilityMode")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("accessibility_mode");
+
                     b.Property<string>("Codec")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
@@ -521,6 +526,10 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
+
+                    b.Property<bool>("IsHumanReviewed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_human_reviewed");
 
                     b.Property<string>("Language")
                         .HasMaxLength(35)
@@ -576,8 +585,15 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("i_x_media_assets_stored_file_id");
 
+                    b.HasIndex("LessonId", "Role")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_media_assets_lesson_id_role")
+                        .HasFilter("is_active = TRUE AND role IN ('SignLanguage', 'AudioDescription')");
+
                     b.ToTable("media_assets", t =>
                         {
+                            t.HasCheckConstraint("ck_media_assets_accessibility_review", "role NOT IN ('SignLanguage', 'AudioDescription') OR is_active = FALSE OR is_human_reviewed = TRUE AND ((role = 'SignLanguage' AND accessibility_mode = 'human-recorded') OR (role = 'AudioDescription' AND accessibility_mode = 'full-mix'))");
+
                             t.HasCheckConstraint("ck_media_assets_dimensions", "(width IS NULL OR width > 0) AND (height IS NULL OR height > 0)");
 
                             t.HasCheckConstraint("ck_media_assets_duration", "duration_milliseconds IS NULL OR duration_milliseconds > 0");
@@ -912,6 +928,14 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("source_lesson_revision");
 
+                    b.Property<Guid?>("SourceMediaAssetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_media_asset_id");
+
+                    b.Property<long?>("SourceMediaVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_media_version");
+
                     b.Property<Guid?>("SourceTranscriptId")
                         .HasColumnType("uuid")
                         .HasColumnName("source_transcript_id");
@@ -931,6 +955,9 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.HasIndex("ApprovedByUserId")
                         .HasDatabaseName("i_x_transcripts_approved_by_user_id");
 
+                    b.HasIndex("SourceMediaAssetId")
+                        .HasDatabaseName("i_x_transcripts_source_media_asset_id");
+
                     b.HasIndex("SourceTranscriptId")
                         .HasDatabaseName("i_x_transcripts_source_transcript_id");
 
@@ -946,6 +973,8 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.ToTable("transcripts", t =>
                         {
                             t.HasCheckConstraint("ck_transcripts_revision", "revision > 0 AND source_lesson_revision > 0");
+
+                            t.HasCheckConstraint("ck_transcripts_source_media", "(source_media_asset_id IS NULL AND source_media_version IS NULL) OR (source_media_asset_id IS NOT NULL AND source_media_version > 0)");
                         });
                 });
 
@@ -1476,6 +1505,12 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("f_k_transcripts_lessons_lesson_id");
+
+                    b.HasOne("Accessibility.Domain.Entities.MediaAsset", null)
+                        .WithMany()
+                        .HasForeignKey("SourceMediaAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("f_k_transcripts_media_assets_source_media_asset_id");
 
                     b.HasOne("Accessibility.Domain.Entities.Transcript", null)
                         .WithMany()
