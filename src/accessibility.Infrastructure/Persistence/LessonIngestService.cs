@@ -125,6 +125,10 @@ public sealed class LessonIngestService(
         {
             throw new StateConflictException("An archived lesson cannot accept new assets.");
         }
+        if (command.ReplaceExisting && lesson.Version != command.ExpectedLessonVersion)
+        {
+            throw new VersionConflictException();
+        }
 
         var rule = AssetUploadPolicy.For(command.Role);
         if (command.SyncOffsetMilliseconds < 0)
@@ -149,16 +153,22 @@ public sealed class LessonIngestService(
         {
             throw Validation("syncOffsetMs", "Primary media must use a zero synchronization offset.");
         }
-
-        if (command.Role is MediaAssetRole.PrimaryVideo or MediaAssetRole.PrimaryAudio &&
-            await database.MediaAssets.AnyAsync(
-                asset => asset.LessonId == lessonId && asset.IsActive &&
-                         (asset.Role == MediaAssetRole.PrimaryVideo || asset.Role == MediaAssetRole.PrimaryAudio),
-                cancellationToken))
+        if (command.Role is MediaAssetRole.SignLanguage or MediaAssetRole.AudioDescription &&
+            command.SyncOffsetMilliseconds > 2_000)
         {
-            throw new DuplicateActiveResourceException("The lesson already has active primary media.");
+            throw Validation("syncOffsetMs", "Accessibility-track offsets cannot exceed 2000 milliseconds.");
         }
 
+        var activeQuery = database.MediaAssets.Where(asset => asset.LessonId == lessonId && asset.IsActive);
+        activeQuery = command.Role is MediaAssetRole.PrimaryVideo or MediaAssetRole.PrimaryAudio
+            ? activeQuery.Where(asset =>
+                asset.Role == MediaAssetRole.PrimaryVideo || asset.Role == MediaAssetRole.PrimaryAudio)
+            : activeQuery.Where(asset => asset.Role == command.Role);
+        var activeAssets = await activeQuery.ToListAsync(cancellationToken);
+        if (activeAssets.Count > 0 && !command.ReplaceExisting)
+        {
+            throw new DuplicateActiveResourceException("The lesson already has an active resource for this role.");
+        }
         var probe = await mediaProbe.ProbeAsync(upload.FilePath, cancellationToken);
         if (rule.RequiresVideo && !probe.HasVideo || rule.RequiresAudio && !probe.HasAudio)
         {
@@ -191,6 +201,25 @@ public sealed class LessonIngestService(
                 command.Role,
                 language,
                 command.SyncOffsetMilliseconds);
+            if (command.Role is MediaAssetRole.SignLanguage or MediaAssetRole.AudioDescription)
+            {
+                if (!command.IsHumanReviewed)
+                {
+                    throw Validation("reviewed", "Accessibility tracks must be explicitly human reviewed.");
+                }
+
+                var requiredMode = command.Role == MediaAssetRole.SignLanguage ? "human-recorded" : "full-mix";
+                if (!string.Equals(command.AccessibilityMode, requiredMode, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw Validation("accessibilityMode", $"Accessibility mode must be '{requiredMode}'.");
+                }
+
+                asset.ConfirmAccessibilityReview(requiredMode);
+            }
+            if (activeAssets.Count > 0)
+            {
+                asset.StageAsReplacement();
+            }
         }
         catch (ArgumentException exception)
         {
@@ -202,9 +231,9 @@ public sealed class LessonIngestService(
         {
             await database.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException exception) when (IsActivePrimaryConflict(exception))
+        catch (DbUpdateException exception) when (IsActiveResourceConflict(exception))
         {
-            throw new DuplicateActiveResourceException("The lesson already has active primary media.");
+            throw new DuplicateActiveResourceException("The lesson already has an active resource for this role.");
         }
 
         await using var content = new FileStream(
@@ -261,10 +290,26 @@ public sealed class LessonIngestService(
             rule.RequiresVideo ? probe.Width : null,
             rule.RequiresVideo ? probe.Height : null,
             codec);
-        lesson.AdvanceDraftRevision();
         try
         {
-            await database.SaveChangesAsync(cancellationToken);
+            if (activeAssets.Count > 0)
+            {
+                await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
+                foreach (var activeAsset in activeAssets)
+                {
+                    activeAsset.Supersede();
+                }
+                await database.SaveChangesAsync(cancellationToken);
+                asset.Activate();
+                lesson.AdvanceDraftRevision();
+                await database.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+            }
+            else
+            {
+                lesson.AdvanceDraftRevision();
+                await database.SaveChangesAsync(cancellationToken);
+            }
         }
         catch (Exception persistenceException)
         {
@@ -306,12 +351,12 @@ public sealed class LessonIngestService(
         return userContext.UserId ?? throw new UnauthorizedAccessException("An authenticated owner is required.");
     }
 
-    private static bool IsActivePrimaryConflict(DbUpdateException exception)
+    private static bool IsActiveResourceConflict(DbUpdateException exception)
     {
         return exception.InnerException is PostgresException
         {
             SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: "i_x_media_assets_lesson_id"
+            ConstraintName: "i_x_media_assets_lesson_id" or "i_x_media_assets_lesson_id_role"
         };
     }
 

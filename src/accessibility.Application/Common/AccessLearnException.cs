@@ -93,3 +93,19 @@ public sealed class DuplicateActiveResourceException : AccessLearnException
     {
     }
 }
+
+public sealed class PreconditionRequiredException : AccessLearnException
+{
+    public PreconditionRequiredException()
+        : base("PRECONDITION_REQUIRED", "If-Match is required for this operation.")
+    {
+    }
+}
+
+public sealed class VersionConflictException : AccessLearnException
+{
+    public VersionConflictException()
+        : base("VERSION_CONFLICT", "The resource changed. Reload it before retrying.")
+    {
+    }
+}

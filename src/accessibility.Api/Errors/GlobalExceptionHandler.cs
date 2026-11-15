@@ -43,6 +43,10 @@ public sealed class GlobalExceptionHandler(
                 (StatusCodes.Status422UnprocessableEntity, "InvalidFileTitle", invalidFile.Code),
             DuplicateActiveResourceException duplicate =>
                 (StatusCodes.Status409Conflict, "ConflictErrorTitle", duplicate.Code),
+            PreconditionRequiredException precondition =>
+                (StatusCodes.Status428PreconditionRequired, "PreconditionRequiredTitle", precondition.Code),
+            VersionConflictException versionConflict =>
+                (StatusCodes.Status412PreconditionFailed, "VersionConflictTitle", versionConflict.Code),
             UnauthorizedAccessException =>
                 (StatusCodes.Status403Forbidden, "ForbiddenErrorTitle", "FORBIDDEN"),
             _ =>

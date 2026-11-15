@@ -1,6 +1,7 @@
 using System.Net;
 using Accessibility.Application.Abstractions;
 using Accessibility.Application.Common;
+using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Options;
@@ -126,15 +127,27 @@ public sealed class S3ObjectStorage(IAmazonS3 s3, IOptions<ObjectStorageOptions>
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        var url = await s3.GetPreSignedURLAsync(
-            new GetPreSignedUrlRequest
-            {
-                BucketName = _options.BucketName,
-                Key = objectKey,
-                Verb = HttpVerb.GET,
-                Expires = DateTime.UtcNow.Add(lifetime),
-                Protocol = new Uri(_options.ServiceUrl).Scheme == Uri.UriSchemeHttp ? Protocol.HTTP : Protocol.HTTPS
-            });
+        var publicServiceUrl = _options.PublicServiceUrl;
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = _options.BucketName,
+            Key = objectKey,
+            Verb = HttpVerb.GET,
+            Expires = DateTime.UtcNow.Add(lifetime),
+            Protocol = new Uri(publicServiceUrl).Scheme == Uri.UriSchemeHttp ? Protocol.HTTP : Protocol.HTTPS
+        };
+        string url;
+        if (string.Equals(publicServiceUrl.TrimEnd('/'), _options.ServiceUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+        {
+            url = await s3.GetPreSignedURLAsync(request);
+        }
+        else
+        {
+            using var signer = new AmazonS3Client(
+                new BasicAWSCredentials(_options.AccessKey, _options.SecretKey),
+                S3ClientConfiguration.Create(_options, publicServiceUrl));
+            url = await signer.GetPreSignedURLAsync(request);
+        }
 
         return new Uri(url, UriKind.Absolute);
     }

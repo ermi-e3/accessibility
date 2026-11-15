@@ -1,7 +1,50 @@
 @accessibility.Api_HostAddress = https://localhost:7121
 @accessibility.Api_ApiKey = replace-with-server-held-integration-key
+@accessibility.Api_LessonId = replace-with-lesson-id
+@accessibility.Api_TranscriptId = replace-with-transcript-id
+@accessibility.Api_TranscriptVersion = 1
+@accessibility.Api_LessonVersion = 1
 
 GET {{accessibility.Api_HostAddress}}/health/live
+Accept: application/json
+
+###
+
+POST {{accessibility.Api_HostAddress}}/api/v1/lessons/{{accessibility.Api_LessonId}}/transcripts
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+
+{
+  "language": "en",
+  "segments": [
+    {
+      "sequence": 0,
+      "startMilliseconds": 0,
+      "endMilliseconds": 2500,
+      "text": "Welcome to the accessible lesson.",
+      "speakerLabel": "Educator"
+    }
+  ]
+}
+
+###
+
+POST {{accessibility.Api_HostAddress}}/api/v1/transcripts/{{accessibility.Api_TranscriptId}}/approve
+Accept: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+If-Match: "{{accessibility.Api_TranscriptVersion}}"
+
+###
+
+POST {{accessibility.Api_HostAddress}}/api/v1/lessons/{{accessibility.Api_LessonId}}/publish
+Accept: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+If-Match: "{{accessibility.Api_LessonVersion}}"
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/public/lessons/{{accessibility.Api_LessonId}}/manifest
 Accept: application/json
 
 ###

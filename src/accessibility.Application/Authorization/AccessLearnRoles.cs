@@ -16,4 +16,6 @@ public static class AccessLearnPolicies
     public const string LessonsWrite = "LessonsWrite";
 
     public const string ResourcesWrite = "ResourcesWrite";
+
+    public const string LessonsPublish = "LessonsPublish";
 }

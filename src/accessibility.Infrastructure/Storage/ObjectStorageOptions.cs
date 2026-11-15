@@ -6,6 +6,8 @@ public sealed class ObjectStorageOptions
 
     public string ServiceUrl { get; init; } = string.Empty;
 
+    public string PublicServiceUrl { get; init; } = string.Empty;
+
     public string AccessKey { get; init; } = string.Empty;
 
     public string SecretKey { get; init; } = string.Empty;

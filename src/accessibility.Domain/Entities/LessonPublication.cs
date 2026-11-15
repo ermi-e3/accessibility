@@ -8,7 +8,15 @@ public sealed class LessonPublication : AuditableEntity
     {
     }
 
-    public LessonPublication(Guid lessonId, int revision, Guid manifestFileId, Guid publishedByUserId, string checksum, DateTimeOffset publishedAt)
+    public LessonPublication(
+        Guid lessonId,
+        int revision,
+        Guid manifestFileId,
+        Guid publishedByUserId,
+        string checksum,
+        DateTimeOffset publishedAt,
+        Guid? id = null)
+        : base(id ?? Guid.CreateVersion7())
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(revision, 1);
         LessonId = lessonId != Guid.Empty ? lessonId : throw new ArgumentException("Lesson is required.", nameof(lessonId));

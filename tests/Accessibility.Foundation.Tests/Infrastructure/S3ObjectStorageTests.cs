@@ -21,6 +21,7 @@ public sealed class S3ObjectStorageTests
         var options = new ObjectStorageOptions
         {
             ServiceUrl = serviceUrl,
+            PublicServiceUrl = serviceUrl,
             AccessKey = "test",
             SecretKey = "test",
             BucketName = bucketName,
