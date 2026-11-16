@@ -145,7 +145,7 @@ public sealed partial class TranscriptFormatService : ITranscriptFormatService
     [GeneratedRegex("\n[ \t]*\n+")]
     private static partial Regex BlankLine();
 
-    [GeneratedRegex("^(?:[0-9]{2,}:)?[0-5][0-9]:[0-5][0-9]\.[0-9]{3}$")]
+    [GeneratedRegex("^(?:[0-9]{2,}:)?[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}$")]
     private static partial Regex VttTimestamp();
 
     [GeneratedRegex("^[0-9]{2,}:[0-5][0-9]:[0-5][0-9],[0-9]{3}$")]

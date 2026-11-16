@@ -72,14 +72,20 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .sign-window[data-size="small"] { width: clamp(7rem, 18%, 12rem); }
 .sign-window[data-size="medium"] { width: clamp(9rem, 25%, 18rem); }
 .sign-window[data-size="large"] { width: clamp(12rem, 35%, 24rem); }
+.sign-window[data-size="custom"] { width: min(var(--sign-width, 18rem), 100%); }
+.sign-window[data-maximized="true"] { inset: 0 !important; width: 100% !important; height: 100% !important; aspect-ratio: auto; border-radius: 0; }
 .sign-window[data-minimized="true"] { width: auto; height: auto; aspect-ratio: auto; }
 .sign-window[data-minimized="true"] .sign-toolbar { position: static; }
+.sign-window[data-minimized="true"] .sign-resize { display: none; }
 .sign-video { width: 100%; height: 100%; object-fit: contain; display: block; }
-.sign-toolbar { position: absolute; inset: auto 0 0; display: flex; gap: 0.25rem; padding: 0.25rem; background: #000c; }
-.sign-toolbar button { min-height: 2rem; flex: 1; padding: 0.2rem; color: #fff; background: #222; border-color: #aaa; font-size: 0.8rem; }
+.sign-toolbar { position: absolute; inset: auto 0 0; display: flex; align-items: center; gap: 0.25rem; padding: 0.25rem; background: #000d; }
+.sign-toolbar span { min-width: 0; flex: 1 1 auto; overflow: hidden; color: #fff; font-size: 0.72rem; text-overflow: ellipsis; white-space: nowrap; }
+.sign-toolbar button { min-height: 2rem; flex: 0 1 auto; padding: 0.2rem 0.35rem; color: #fff; background: #222; border-color: #aaa; font-size: 0.75rem; }
+.sign-resize { position: absolute; z-index: 2; left: 0; top: 0; min-width: 2.25rem; min-height: 2.25rem; padding: 0.1rem; color: #fff; background: #000d; cursor: nwse-resize; }
 .controls { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.65rem; background: var(--al-surface-muted); border-top: 1px solid var(--al-border); }
 .controls .seek { flex: 1 1 15rem; }
 .controls .volume { width: 6rem; }
+.offline-download { display: inline-flex; min-height: 2.75rem; align-items: center; padding: 0.45rem 0.7rem; border: 1px solid var(--al-border); border-radius: 0.4rem; background: var(--al-surface); color: var(--al-text); font-weight: 700; text-decoration: none; }
 .time { min-width: 8.5rem; font-variant-numeric: tabular-nums; }
 .status { min-height: 1.5rem; padding: 0.35rem 0.75rem; }
 .status.error { color: #8b0000; font-weight: 700; }
@@ -87,6 +93,8 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .transcript { border-top: 1px solid var(--al-border); padding: 0.8rem; min-width: 0; max-height: 38rem; overflow: auto; }
 .transcript header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .transcript h3 { margin: 0; font-size: 1.15rem; }
+.transcript-language { display: grid; gap: 0.3rem; margin-top: 0.65rem; font-weight: 700; }
+.transcript-status { margin: 0.5rem 0 0; color: #4a4a4a; font-size: 0.9rem; }
 .transcript input { width: 100%; padding: 0.45rem; margin: 0.65rem 0; }
 .segments { list-style: none; margin: 0; padding: 0; }
 .segment { width: 100%; text-align: left; border: 0; border-bottom: 1px solid #ddd; border-radius: 0; padding: 0.65rem; background: transparent; }

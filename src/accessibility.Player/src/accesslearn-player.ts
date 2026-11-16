@@ -3,6 +3,7 @@ import { playerStyles } from "./styles";
 import type {
   AccessLearnPlayerElement,
   CaptionTrack,
+  PlayerProgressEventDetail,
   PlayerConfig,
   PlayerManifest,
   PlayerState,
@@ -13,6 +14,7 @@ import type {
 const PREFERENCES_KEY = "accesslearn-player:v1:preferences";
 const SEEK_SECONDS = 10;
 const SIGN_DRIFT_SECONDS = 0.35;
+const PROGRESS_EVENT_INTERVAL_SECONDS = 5;
 
 interface PlayerPreferences {
   captionScale: number;
@@ -20,10 +22,14 @@ interface PlayerPreferences {
   captionBackground: string;
   captionOpacity: number;
   signPosition: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "custom";
-  signSize: "small" | "medium" | "large";
+  signSize: "small" | "medium" | "large" | "custom";
+  signWidth: number | null;
   signLeft: number | null;
   signTop: number | null;
+  signMinimized: boolean;
+  signMaximized: boolean;
   captionLanguage: string | null;
+  transcriptLanguage: string | null;
   transcriptOpen: boolean;
 }
 
@@ -34,9 +40,13 @@ const defaultPreferences: PlayerPreferences = {
   captionOpacity: 0.82,
   signPosition: "top-right",
   signSize: "medium",
+  signWidth: null,
   signLeft: null,
   signTop: null,
+  signMinimized: false,
+  signMaximized: false,
   captionLanguage: null,
+  transcriptLanguage: null,
   transcriptOpen: false
 };
 
@@ -53,6 +63,7 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
   #signEnabled = false;
   #audioDescriptionEnabled = false;
   #captionLanguage: string | null = null;
+  #transcriptLanguage: string | null = null;
   #transcriptCache = new Map<string, TranscriptResponse>();
   #preferences = this.#loadPreferences();
   #restorePrimaryMuted = false;
@@ -61,6 +72,8 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
   #resourceRefreshAttempts = 0;
   #configuring = false;
   #activeSegmentSequence: number | null = null;
+  #lastProgressEventTime: number | null = null;
+  #completionEmitted = false;
 
   constructor() {
     super();
@@ -141,8 +154,25 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     this.#preferences.captionLanguage = language;
     this.#persistPreferences();
     this.#renderActiveCue();
-    if (this.#transcriptOpen) void this.#loadTranscript(language ?? this.#defaultTranscriptLanguage());
+    if (language && this.#manifest.transcripts.some((item) => item.language === language)) {
+      void this.setTranscriptLanguage(language);
+    } else if (this.#transcriptOpen) {
+      void this.#loadTranscript(this.#transcriptLanguage ?? this.#defaultTranscriptLanguage());
+    }
     this.#emit("accesslearn:captionchange", { language });
+  }
+
+  async setTranscriptLanguage(language: string): Promise<void> {
+    if (!this.#manifest?.transcripts.some((item) => item.language === language)) {
+      throw new Error("RESOURCE_UNAVAILABLE");
+    }
+    this.#transcriptLanguage = language;
+    this.#preferences.transcriptLanguage = language;
+    this.#persistPreferences();
+    const selector = this.#element<HTMLSelectElement>("[data-transcript-language]");
+    if (selector) selector.value = language;
+    if (this.#transcriptOpen) await this.#loadTranscript(language);
+    this.#emit("accesslearn:transcriptlanguagechange", { language });
   }
 
   async setTranscriptOpen(open: boolean): Promise<void> {
@@ -156,7 +186,7 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     if (transcript) transcript.hidden = !open;
     layout?.classList.toggle("has-transcript", open);
     button?.setAttribute("aria-pressed", String(open));
-    if (open) await this.#loadTranscript(this.#captionLanguage ?? this.#defaultTranscriptLanguage());
+    if (open) await this.#loadTranscript(this.#transcriptLanguage ?? this.#defaultTranscriptLanguage());
     else if (restoreFocus) button?.focus();
   }
 
@@ -183,7 +213,9 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
         }
       }
     } else {
+      const restoreFocus = Boolean(window?.contains(this.#root.activeElement));
       this.#signMedia()?.pause();
+      if (restoreFocus) button?.focus();
     }
     this.#emit("accesslearn:signchange", { enabled });
   }
@@ -231,8 +263,11 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       currentTime: media?.currentTime ?? 0,
       duration: Number.isFinite(media?.duration) ? media?.duration ?? 0 : 0,
       captionLanguage: this.#captionLanguage,
+      transcriptLanguage: this.#transcriptLanguage,
       transcriptOpen: this.#transcriptOpen,
       signLanguageEnabled: this.#signEnabled,
+      signWindowMinimized: this.#element<HTMLElement>("[data-sign-window]")?.dataset.minimized === "true",
+      signWindowMaximized: this.#element<HTMLElement>("[data-sign-window]")?.dataset.maximized === "true",
       audioDescriptionEnabled: this.#audioDescriptionEnabled
     };
   }
@@ -260,8 +295,11 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       this.#signEnabled = false;
       this.#audioDescriptionEnabled = false;
       this.#transcriptOpen = this.#preferences.transcriptOpen;
+      this.#transcriptLanguage = this.#preferences.transcriptLanguage;
       this.#restorePrimaryMuted = false;
       this.#activeSegmentSequence = null;
+      this.#lastProgressEventTime = null;
+      this.#completionEmitted = false;
     }
     this.#locale = normalizeLocale(this.getAttribute("locale"));
     this.lang = this.#locale;
@@ -305,7 +343,8 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
         features: {
           signLanguage: Boolean(manifest.signLanguage),
           audioDescription: Boolean(manifest.audioDescription),
-          transcript: manifest.transcripts.length > 0
+          transcript: manifest.transcripts.length > 0,
+          offlinePackage: Boolean(manifest.offlinePackage)
         }
       });
     } catch (error) {
@@ -352,8 +391,12 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
                 <p class="visually-hidden" id="al-sign-help">${this.#text("signMovementHelp")}</p>
                 <video class="sign-video" data-sign-media muted playsinline preload="metadata" crossorigin="anonymous"></video>
                 <div class="sign-toolbar">
+                  <span data-sign-label></span>
                   <button type="button" data-sign-minimize></button>
+                  <button type="button" data-sign-maximize></button>
+                  <button type="button" data-sign-close aria-label="${this.#text("disableSign")}">×</button>
                 </div>
+                <button class="sign-resize" type="button" data-sign-resize aria-label="${this.#text("resizeSign")}">↘</button>
               </div>
               <audio data-description-media preload="metadata" crossorigin="anonymous"></audio>
             </div>
@@ -376,6 +419,7 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
               <button type="button" data-sign-button aria-pressed="false">${this.#text("signLanguage")}</button>
               <button type="button" data-description-button aria-pressed="false">${this.#text("audioDescription")}</button>
               <button type="button" data-transcript-button aria-pressed="false">${this.#text("transcript")}</button>
+              <a class="offline-download" data-offline-download hidden download></a>
               <button type="button" data-fullscreen aria-pressed="false">${this.#text("fullscreen")}</button>
               <button type="button" data-help>${this.#text("keyboardHelp")}</button>
             </div>
@@ -384,6 +428,8 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
           </div>
           <aside class="transcript" data-transcript hidden aria-label="${this.#text("transcript")}">
             <header><h3>${this.#text("transcript")}</h3><button type="button" data-transcript-close>${this.#text("close")}</button></header>
+            <label class="transcript-language">${this.#text("transcriptLanguage")}<select data-transcript-language></select></label>
+            <p class="transcript-status" data-transcript-status></p>
             <label class="visually-hidden" for="al-transcript-search">${this.#text("transcriptSearch")}</label>
             <input id="al-transcript-search" data-transcript-search type="search" placeholder="${this.#text("transcriptSearch")}">
             <p data-transcript-empty hidden>${this.#text("transcriptEmpty")}</p>
@@ -424,9 +470,12 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       "audio-only",
       manifest.media.contentType.startsWith("audio/")
     );
+    this.#configureTranscriptOptions();
     this.#configureTracks(manifest.captions);
     const signButton = this.#element<HTMLButtonElement>("[data-sign-button]");
     if (signButton) signButton.hidden = !manifest.signLanguage;
+    const signLabel = this.#element<HTMLElement>("[data-sign-label]");
+    if (signLabel) signLabel.textContent = manifest.signLanguage?.label ?? this.#text("signLanguage");
     for (const setting of this.#root.querySelectorAll<HTMLElement>("[data-sign-setting]")) {
       setting.hidden = !manifest.signLanguage;
     }
@@ -434,6 +483,14 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     if (descriptionButton) descriptionButton.hidden = !manifest.audioDescription;
     const transcriptButton = this.#element<HTMLButtonElement>("[data-transcript-button]");
     if (transcriptButton) transcriptButton.hidden = manifest.transcripts.length === 0;
+    const offline = this.#element<HTMLAnchorElement>("[data-offline-download]");
+    if (offline && manifest.offlinePackage) {
+      offline.hidden = false;
+      offline.href = manifest.offlinePackage.url;
+      offline.download = `${manifest.lessonId}-${manifest.offlinePackage.profile}.zip`;
+      offline.textContent = `${this.#text("downloadOffline")} (${this.#formatBytes(manifest.offlinePackage.byteLength)})`;
+      offline.title = `SHA-256: ${manifest.offlinePackage.sha256}`;
+    }
     const warnings = this.#element<HTMLUListElement>("[data-warnings]");
     if (warnings && manifest.warnings.length > 0) {
       warnings.hidden = false;
@@ -513,19 +570,31 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     this.#element<HTMLButtonElement>("[data-description-button]")?.addEventListener("click", () => void this.setAudioDescription(!this.#audioDescriptionEnabled), { signal });
     this.#element<HTMLButtonElement>("[data-transcript-button]")?.addEventListener("click", () => void this.setTranscriptOpen(!this.#transcriptOpen), { signal });
     this.#element<HTMLButtonElement>("[data-transcript-close]")?.addEventListener("click", () => void this.setTranscriptOpen(false), { signal });
+    this.#element<HTMLSelectElement>("[data-transcript-language]")?.addEventListener("change", (event) => {
+      void this.setTranscriptLanguage((event.currentTarget as HTMLSelectElement).value);
+    }, { signal });
     this.#element<HTMLInputElement>("[data-transcript-search]")?.addEventListener("input", () => this.#renderTranscript(), { signal });
     this.#element<HTMLButtonElement>("[data-fullscreen]")?.addEventListener("click", () => void this.#toggleFullscreen(), { signal });
     this.#element<HTMLButtonElement>("[data-sign-minimize]")?.addEventListener("click", () => this.#toggleSignMinimize(), { signal });
+    this.#element<HTMLButtonElement>("[data-sign-maximize]")?.addEventListener("click", () => this.#toggleSignMaximize(), { signal });
+    this.#element<HTMLButtonElement>("[data-sign-close]")?.addEventListener("click", () => void this.setSignLanguage(false), { signal });
+    this.#element<HTMLAnchorElement>("[data-offline-download]")?.addEventListener("click", () => {
+      this.#emit("accesslearn:offlinedownload", { profile: this.#manifest?.offlinePackage?.profile });
+    }, { signal });
     this.#bindPreferenceControls(signal);
     this.#bindSignMovement(signal);
     this.addEventListener("keydown", (event) => this.#onKeyDown(event), { signal });
     document.addEventListener("fullscreenchange", () => this.#refreshFullscreenControl(), { signal });
-    media.addEventListener("loadedmetadata", () => this.#refreshTimeline(), { signal });
+    media.addEventListener("loadedmetadata", () => {
+      this.#refreshTimeline();
+      this.#emitProgress(true);
+    }, { signal });
     media.addEventListener("durationchange", () => this.#refreshTimeline(), { signal });
     media.addEventListener("timeupdate", () => {
       this.#refreshTimeline();
       this.#renderActiveSegment();
       this.#syncSecondary(false);
+      this.#emitProgress();
     }, { signal });
     media.addEventListener("play", () => {
       this.#refreshPlayControl();
@@ -539,7 +608,11 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       this.#emit("accesslearn:pause", {});
     }, { signal });
     media.addEventListener("seeking", () => this.#syncSecondary(true), { signal });
-    media.addEventListener("seeked", () => this.#emit("accesslearn:seeked", { currentTime: media.currentTime }), { signal });
+    media.addEventListener("seeked", () => {
+      this.#emit("accesslearn:seeked", { currentTime: media.currentTime });
+      this.#emitProgress(true);
+    }, { signal });
+    media.addEventListener("ended", () => this.#emitCompletion(), { signal });
     media.addEventListener("volumechange", () => this.#refreshMuteControl(), { signal });
     media.addEventListener("error", () => void this.#handleResourceError("MEDIA_FAILED"), { signal });
     this.#signMedia()?.addEventListener("error", () => void this.#handleSecondaryFailure("sign"), { signal });
@@ -573,17 +646,30 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     }, { signal });
     signSize.addEventListener("change", () => {
       this.#preferences.signSize = signSize.value as PlayerPreferences["signSize"];
+      this.#preferences.signWidth = null;
+      this.#preferences.signMaximized = false;
+      this.#preferences.signMinimized = false;
       this.#savePreferences();
+      this.#reclampSignWindow();
+      this.#emitSignWindowChange();
     }, { signal });
   }
 
   #bindSignMovement(signal: AbortSignal): void {
     const window = this.#element<HTMLElement>("[data-sign-window]")!;
+    const resize = this.#element<HTMLButtonElement>("[data-sign-resize]")!;
     window.addEventListener("keydown", (event) => {
       if (!event.key.startsWith("Arrow")) return;
+      const target = event.composedPath()[0] as Element;
+      if (target.closest("button") && target !== resize) return;
       event.preventDefault();
       event.stopPropagation();
       const step = event.shiftKey ? 1 : 10;
+      if (event.ctrlKey) {
+        const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+        this.#setSignWidth(window.getBoundingClientRect().width + direction * step);
+        return;
+      }
       const stage = this.#element<HTMLElement>("[data-stage]")!.getBoundingClientRect();
       const rect = window.getBoundingClientRect();
       let left = rect.left - stage.left;
@@ -614,6 +700,27 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       window.addEventListener("pointerup", end);
       window.addEventListener("pointercancel", end);
     }, { signal });
+    resize.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resize.setPointerCapture(event.pointerId);
+      const startX = event.clientX;
+      const startWidth = window.getBoundingClientRect().width;
+      const move = (moveEvent: PointerEvent): void => this.#setSignWidth(startWidth + moveEvent.clientX - startX);
+      const end = (): void => {
+        resize.removeEventListener("pointermove", move);
+        resize.removeEventListener("pointerup", end);
+        resize.removeEventListener("pointercancel", end);
+      };
+      resize.addEventListener("pointermove", move);
+      resize.addEventListener("pointerup", end);
+      resize.addEventListener("pointercancel", end);
+    }, { signal });
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => this.#reclampSignWindow());
+      observer.observe(this.#element<HTMLElement>("[data-stage]")!);
+      signal.addEventListener("abort", () => observer.disconnect(), { once: true });
+    }
   }
 
   #setSignCoordinates(left: number, top: number): void {
@@ -629,11 +736,40 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     this.#preferences.signLeft = boundedLeft;
     this.#preferences.signTop = boundedTop;
     this.#persistPreferences();
+    this.#emitSignWindowChange();
+  }
+
+  #setSignWidth(width: number): void {
+    const sign = this.#element<HTMLElement>("[data-sign-window]")!;
+    const stage = this.#element<HTMLElement>("[data-stage]")!.getBoundingClientRect();
+    const maximumWidth = Math.max(128, Math.min(stage.width, stage.height * 4 / 3));
+    const boundedWidth = Math.max(128, Math.min(maximumWidth, width));
+    sign.dataset.maximized = "false";
+    sign.dataset.minimized = "false";
+    sign.dataset.size = "custom";
+    sign.style.setProperty("--sign-width", `${boundedWidth}px`);
+    this.#preferences.signSize = "custom";
+    this.#preferences.signWidth = boundedWidth;
+    this.#preferences.signMaximized = false;
+    this.#preferences.signMinimized = false;
+    this.#refreshSignWindowControls();
+    this.#reclampSignWindow();
+    this.#persistPreferences();
+    this.#emitSignWindowChange();
+  }
+
+  #reclampSignWindow(): void {
+    const sign = this.#element<HTMLElement>("[data-sign-window]");
+    if (!sign || sign.hidden || sign.dataset.position !== "custom" || sign.dataset.maximized === "true") return;
+    const left = Number.parseFloat(sign.style.getPropertyValue("--sign-left")) || 0;
+    const top = Number.parseFloat(sign.style.getPropertyValue("--sign-top")) || 0;
+    this.#setSignCoordinates(left, top);
   }
 
   #onKeyDown(event: KeyboardEvent): void {
     if (event.defaultPrevented) return;
-    if ((event.target as Element).matches("input, select, textarea, button, [contenteditable='true']")) return;
+    const source = event.composedPath()[0];
+    if (source instanceof Element && source.matches("input, select, textarea, button, [contenteditable='true']")) return;
     const key = event.key.toLowerCase();
     if (key === " " || key === "k") { event.preventDefault(); void this.#togglePlay(); }
     else if (key === "arrowleft") { event.preventDefault(); this.seekTo((this.#media()?.currentTime ?? 0) - SEEK_SECONDS); }
@@ -666,8 +802,9 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
   #cycleCaptions(): void {
     const tracks = this.#manifest?.captions ?? [];
     if (tracks.length === 0) return;
-    if (this.#captionLanguage === null) this.setCaptionLanguage(tracks[0]!.language);
-    else this.setCaptionLanguage(null);
+    const values: Array<string | null> = [null, ...tracks.map((track) => track.language)];
+    const index = values.indexOf(this.#captionLanguage);
+    this.setCaptionLanguage(values[(index + 1) % values.length] ?? null);
   }
 
   async #toggleFullscreen(): Promise<void> {
@@ -687,9 +824,59 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     const video = this.#signMedia()!;
     const minimized = sign.dataset.minimized === "true";
     sign.dataset.minimized = String(!minimized);
+    if (!minimized) sign.dataset.maximized = "false";
     video.hidden = !minimized;
-    const button = this.#element<HTMLButtonElement>("[data-sign-minimize]")!;
-    button.textContent = minimized ? this.#text("minimize") : this.#text("restore");
+    this.#preferences.signMinimized = !minimized;
+    if (!minimized) this.#preferences.signMaximized = false;
+    this.#refreshSignWindowControls();
+    this.#persistPreferences();
+    this.#emitSignWindowChange();
+  }
+
+  #toggleSignMaximize(): void {
+    const sign = this.#element<HTMLElement>("[data-sign-window]")!;
+    const maximized = sign.dataset.maximized === "true";
+    sign.dataset.maximized = String(!maximized);
+    sign.dataset.minimized = "false";
+    this.#signMedia()!.hidden = false;
+    this.#preferences.signMaximized = !maximized;
+    this.#preferences.signMinimized = false;
+    this.#refreshSignWindowControls();
+    if (maximized) this.#reclampSignWindow();
+    this.#persistPreferences();
+    this.#emitSignWindowChange();
+  }
+
+  #refreshSignWindowControls(): void {
+    const sign = this.#element<HTMLElement>("[data-sign-window]");
+    if (!sign) return;
+    const minimized = sign.dataset.minimized === "true";
+    const maximized = sign.dataset.maximized === "true";
+    const minimize = this.#element<HTMLButtonElement>("[data-sign-minimize]");
+    const maximize = this.#element<HTMLButtonElement>("[data-sign-maximize]");
+    if (minimize) {
+      minimize.textContent = minimized ? this.#text("restore") : this.#text("minimize");
+      minimize.setAttribute("aria-pressed", String(minimized));
+    }
+    if (maximize) {
+      maximize.textContent = maximized ? this.#text("exitMaximize") : this.#text("maximize");
+      maximize.setAttribute("aria-pressed", String(maximized));
+      maximize.disabled = minimized;
+    }
+  }
+
+  #emitSignWindowChange(): void {
+    const sign = this.#element<HTMLElement>("[data-sign-window]");
+    if (!sign) return;
+    const rect = sign.getBoundingClientRect();
+    this.#emit("accesslearn:signwindowchange", {
+      position: sign.dataset.position,
+      size: sign.dataset.size,
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      minimized: sign.dataset.minimized === "true",
+      maximized: sign.dataset.maximized === "true"
+    });
   }
 
   async #resumeSecondary(): Promise<void> {
@@ -763,6 +950,9 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       this.seekTo(state.currentTime);
       if (state.captionLanguage && this.#manifest?.captions.some((track) => track.language === state.captionLanguage)) {
         this.setCaptionLanguage(state.captionLanguage);
+      }
+      if (state.transcriptLanguage && this.#manifest?.transcripts.some((track) => track.language === state.transcriptLanguage)) {
+        await this.setTranscriptLanguage(state.transcriptLanguage);
       }
       if (state.transcriptOpen) await this.setTranscriptOpen(true);
       if (state.signLanguageEnabled && this.#manifest?.signLanguage) await this.setSignLanguage(true);
@@ -908,9 +1098,13 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
 
   async #loadTranscript(language: string | null): Promise<void> {
     if (!language || !this.#manifest) return;
+    const link = this.#manifest.transcripts.find((item) => item.language === language);
+    if (!link) {
+      this.#transcriptCache.delete(language);
+      this.#element<HTMLOListElement>("[data-segments]")?.replaceChildren();
+      return;
+    }
     if (!this.#transcriptCache.has(language)) {
-      const link = this.#manifest.transcripts.find((item) => item.language === language);
-      if (!link) return;
       try {
         const response = await fetch(link.url, { signal: this.#loadController?.signal });
         if (!response.ok) throw new Error(`TRANSCRIPT_${response.status}`);
@@ -922,11 +1116,13 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     }
     const transcriptRegion = this.#element<HTMLElement>("[data-transcript]");
     if (transcriptRegion) transcriptRegion.lang = language;
+    const status = this.#element<HTMLElement>("[data-transcript-status]");
+    if (status) status.textContent = link.label;
     this.#renderTranscript();
   }
 
   #renderTranscript(): void {
-    const language = this.#captionLanguage ?? this.#defaultTranscriptLanguage();
+    const language = this.#transcriptLanguage ?? this.#defaultTranscriptLanguage();
     const transcript = language ? this.#transcriptCache.get(language) : undefined;
     const list = this.#element<HTMLOListElement>("[data-segments]");
     const empty = this.#element<HTMLElement>("[data-transcript-empty]");
@@ -958,7 +1154,7 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
 
   #renderActiveSegment(): void {
     const current = this.#media()?.currentTime ?? 0;
-    const language = this.#captionLanguage ?? this.#defaultTranscriptLanguage();
+    const language = this.#transcriptLanguage ?? this.#defaultTranscriptLanguage();
     const transcript = language ? this.#transcriptCache.get(language) : undefined;
     const active = transcript?.segments.find((segment) =>
       current * 1000 >= segment.startMilliseconds && current * 1000 < segment.endMilliseconds
@@ -992,19 +1188,25 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     if (background) background.value = this.#preferences.captionBackground;
     if (opacity) opacity.value = String(this.#preferences.captionOpacity);
     if (signPosition) signPosition.value = this.#preferences.signPosition === "custom" ? "top-right" : this.#preferences.signPosition;
-    if (signSize) signSize.value = this.#preferences.signSize;
+    if (signSize) signSize.value = this.#preferences.signSize === "custom" ? "medium" : this.#preferences.signSize;
     const sign = this.#element<HTMLElement>("[data-sign-window]");
     if (sign) {
       sign.dataset.position = this.#preferences.signPosition;
       sign.dataset.size = this.#preferences.signSize;
+      sign.dataset.minimized = String(this.#preferences.signMinimized);
+      sign.dataset.maximized = String(this.#preferences.signMaximized);
+      if (this.#preferences.signSize === "custom" && this.#preferences.signWidth !== null) {
+        sign.style.setProperty("--sign-width", `${this.#preferences.signWidth}px`);
+      }
       if (this.#preferences.signPosition === "custom" &&
           this.#preferences.signLeft !== null && this.#preferences.signTop !== null) {
         sign.style.setProperty("--sign-left", `${this.#preferences.signLeft}px`);
         sign.style.setProperty("--sign-top", `${this.#preferences.signTop}px`);
       }
     }
-    const minimize = this.#element<HTMLButtonElement>("[data-sign-minimize]");
-    if (minimize) minimize.textContent = this.#text("minimize");
+    const signMedia = this.#signMedia();
+    if (signMedia) signMedia.hidden = this.#preferences.signMinimized;
+    this.#refreshSignWindowControls();
   }
 
   #savePreferences(): void {
@@ -1036,13 +1238,17 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
         manifest.captions.some((track) => !track.language || !track.label || !this.#isSafeUrl(track.url)) ||
         manifest.transcripts.some((track) => !track.language || !track.label || !this.#isSafeUrl(track.url)) ||
         Boolean(manifest.signLanguage &&
-          (!manifest.signLanguage.language || !this.#isSafeUrl(manifest.signLanguage.url) ||
+          (manifest.signLanguage.language !== "eth" || !this.#isSafeUrl(manifest.signLanguage.url) ||
            !Number.isFinite(manifest.signLanguage.syncOffsetMilliseconds) ||
            Math.abs(manifest.signLanguage.syncOffsetMilliseconds) > 2_000)) ||
         Boolean(manifest.audioDescription &&
           (!this.#isSafeUrl(manifest.audioDescription.url) || manifest.audioDescription.mode !== "full-mix" ||
            !Number.isFinite(manifest.audioDescription.syncOffsetMilliseconds) ||
-           Math.abs(manifest.audioDescription.syncOffsetMilliseconds) > 2_000))) {
+           Math.abs(manifest.audioDescription.syncOffsetMilliseconds) > 2_000)) ||
+        Boolean(manifest.offlinePackage &&
+          (!manifest.offlinePackage.label || !this.#isSafeUrl(manifest.offlinePackage.url) ||
+           manifest.offlinePackage.contentType !== "application/zip" || manifest.offlinePackage.byteLength <= 0 ||
+           !/^[0-9a-f]{64}$/i.test(manifest.offlinePackage.sha256)))) {
       throw new Error("UNSUPPORTED_MANIFEST");
     }
   }
@@ -1077,14 +1283,85 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     status.classList.toggle("error", error);
   }
 
-  #emit(name: string, detail: Record<string, unknown>): void {
+  #configureTranscriptOptions(): void {
+    const selector = this.#element<HTMLSelectElement>("[data-transcript-language]");
+    if (!selector || !this.#manifest) return;
+    selector.replaceChildren();
+    for (const transcript of this.#manifest.transcripts) {
+      const option = document.createElement("option");
+      option.value = transcript.language;
+      option.textContent = `${transcript.label}${transcript.isHumanReviewed ? " ✓" : ""}`;
+      selector.append(option);
+    }
+    const preferred = this.#manifest.transcripts.find((item) => item.language === this.#preferences.transcriptLanguage)
+      ?? this.#manifest.transcripts.find((item) => item.language === this.#manifest?.sourceLanguage)
+      ?? this.#manifest.transcripts[0];
+    this.#transcriptLanguage = preferred?.language ?? null;
+    if (this.#transcriptLanguage) selector.value = this.#transcriptLanguage;
+  }
+
+  #emitProgress(force = false): void {
+    const detail = this.#progressDetail();
+    if (!detail) return;
+    if (!force && this.#lastProgressEventTime !== null &&
+        Math.abs(detail.currentTime - this.#lastProgressEventTime) < PROGRESS_EVENT_INTERVAL_SECONDS &&
+        detail.progress < 1) {
+      return;
+    }
+    this.#lastProgressEventTime = detail.currentTime;
+    this.#emit("db-player:progress", detail);
+  }
+
+  #emitCompletion(): void {
+    if (this.#completionEmitted) return;
+    const detail = this.#progressDetail();
+    if (!detail) return;
+    this.#completionEmitted = true;
+    this.#emitProgress(true);
+    this.#emit("db-player:complete", {
+      ...detail,
+      progress: 1,
+      percent: 100,
+      completedAt: new Date().toISOString()
+    });
+  }
+
+  #progressDetail(): PlayerProgressEventDetail | null {
+    const manifest = this.#manifest;
+    const media = this.#media();
+    if (!manifest || !media) return null;
+    const mediaDuration = Number.isFinite(media.duration) && media.duration > 0
+      ? media.duration
+      : manifest.media.durationMilliseconds / 1000;
+    if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return null;
+    const currentTime = Math.max(0, Math.min(mediaDuration, media.currentTime));
+    const progress = Math.max(0, Math.min(1, currentTime / mediaDuration));
+    return {
+      lessonId: manifest.lessonId,
+      publicationId: manifest.publicationId,
+      revision: manifest.revision,
+      currentTime,
+      duration: mediaDuration,
+      progress,
+      percent: Math.round(progress * 100)
+    };
+  }
+
+  #emit(name: string, detail: unknown): void {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
   }
 
   #text(key: MessageKey): string { return message(this.#locale, key); }
   #warningText(code: string): string {
     const key = code as MessageKey;
-    return ["missingEnglishCaptions", "missingAmharicCaptions", "missingSignLanguage", "missingAudioDescription"]
+    return [
+      "missingEnglishCaptions",
+      "missingAmharicCaptions",
+      "missingSignLanguage",
+      "missingAudioDescription",
+      "amharicDraftNotReviewed",
+      "ethslDemoNotReviewed"
+    ]
       .includes(code)
       ? this.#text(key)
       : code;
@@ -1104,6 +1381,13 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     return hours > 0
       ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`
       : `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
+  }
+  #formatBytes(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+    const value = bytes / 1024 ** index;
+    return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
   }
   #hexToRgb(value: string): string {
     const hex = value.replace("#", "");
