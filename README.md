@@ -10,9 +10,9 @@ verification.
 
 ## Demo Recording
 
-[![Watch the AccessLearn Ethiopia demo](Savanna-static-pages/assets/media/accesslearn-demo/sample-poster.svg)](docs/recording.mp4)
+[![Watch the AccessLearn Ethiopia demo](Savanna-static-pages/assets/media/accesslearn-demo/sample-poster.svg)](https://www.youtube.com/watch?v=euHyRqrEOzI)
 
-**[Watch the full MP4 demo](docs/recording.mp4)** (17.2 MB)
+**[Watch the full MP4 demo](https://www.youtube.com/watch?v=euHyRqrEOzI)** (17.2 MB)
 
 The recording demonstrates the judge route from accessible learning media to
 career discovery and certificate verification.
