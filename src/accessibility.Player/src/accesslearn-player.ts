@@ -486,11 +486,15 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
     if (transcriptButton) transcriptButton.hidden = manifest.transcripts.length === 0;
     const offlineLink = this.#element<HTMLAnchorElement>("[data-offline-link]");
     if (offlineLink) {
-      const apiBase = this.getAttribute("api-base") ?? location.origin;
-      offlineLink.href = new URL(
-        `offline/?lesson=${encodeURIComponent(manifest.lessonId)}&locale=${this.#locale}`,
-        this.#withTrailingSlash(apiBase)
-      ).toString();
+      const installerEnabled = this.getAttribute("offline-installer") !== "false";
+      offlineLink.hidden = !installerEnabled;
+      if (installerEnabled) {
+        const apiBase = this.getAttribute("api-base") ?? location.origin;
+        offlineLink.href = new URL(
+          `offline/?lesson=${encodeURIComponent(manifest.lessonId)}&locale=${this.#locale}`,
+          this.#withTrailingSlash(apiBase)
+        ).toString();
+      }
     }
     const offline = this.#element<HTMLAnchorElement>("[data-offline-download]");
     if (offline && manifest.offlinePackage) {
