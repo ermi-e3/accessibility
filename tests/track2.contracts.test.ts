@@ -163,4 +163,16 @@ describe('Track 2 integration contracts', () => {
     expect(showcase).toContain('sample-captions.am.draft.vtt');
     expect(showcase).toContain('accesslearn-demo-complete.zip');
   });
+
+  it('publishes a runnable judge README with a repository-hosted demo recording', () => {
+    const readme = read(root, 'README.md');
+    const recording = statSync(join(root, 'docs', 'recording.mp4'));
+    expect(recording.size).toBeGreaterThan(1_000_000);
+    expect(recording.size).toBeLessThan(100 * 1024 * 1024);
+    expect(readme).toContain('(docs/recording.mp4)');
+    expect(readme).toContain('Savanna-static-pages/assets/media/accesslearn-demo/sample-poster.svg');
+    expect(readme).toContain('git clone https://github.com/ermi-e3/accessibility.git');
+    expect(readme).toContain('npm run serve:fixtures');
+    expect(readme).toContain('http://127.0.0.1:4173/');
+  });
 });
