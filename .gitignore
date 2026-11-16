@@ -9,6 +9,9 @@
 
 .kilo/
 .tools/
+node_modules/
+playwright-report/
+test-results/
 src/accessibility.Api/wwwroot/sdk/
 problems.md
 prompt.md
