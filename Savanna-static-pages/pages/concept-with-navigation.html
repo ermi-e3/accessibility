@@ -47,6 +47,7 @@
     <link rel="stylesheet" href="../assets/css/app.css" media="all" />
 
     <link rel="stylesheet" href="../assets/css/static-page.css" media="all" />
+    <link rel="stylesheet" href="../assets/css/accesslearn-integration.css" media="all" />
   </head>
 
   <body class="signed_in env_development notranslate" translate="no" data-theme-suffix="_alx">
@@ -545,6 +546,48 @@
               <span>
                 <div class="savanna-styles">
                   <p><img src="../assets/img/VA-Content-Banner.png" alt="VA-Content-Banner" loading="lazy" /></p>
+                  <section
+                    class="accesslearn-module"
+                    aria-labelledby="accessible-lesson-title"
+                    data-accesslearn-integration
+                    data-api-base="same-origin"
+                    data-sdk-src="../assets/js/accesslearn-player.min.js"
+                    data-lesson-id="demo-accessible-careers"
+                  >
+                    <h2 id="accessible-lesson-title">Accessible lesson media</h2>
+                    <p>
+                      This rights-safe local sample includes reviewed English text, an explicitly unreviewed Amharic
+                      draft, a keyboard-operable EthSL window control demo, and a portable offline package. Educators
+                      replace the control demo with a reviewed human-recorded EthSL video before publication.
+                    </p>
+                    <p data-player-instructions>
+                      Loading the sample lesson. A deployed host can replace it with
+                      <code>?lesson=&lt;published-lesson-id&gt;&amp;locale=en</code>.
+                    </p>
+                    <accesslearn-player
+                      id="accesslearn-lesson"
+                      aria-describedby="accesslearn-progress-status"
+                      hidden
+                    ></accesslearn-player>
+                    <div class="accesslearn-progress">
+                      <label for="accesslearn-progress">Lesson progress</label>
+                      <output data-lesson-progress-value for="accesslearn-progress">0%</output>
+                      <progress id="accesslearn-progress" data-lesson-progress max="100" value="0">0%</progress>
+                    </div>
+                    <p
+                      class="accesslearn-progress-status"
+                      id="accesslearn-progress-status"
+                      data-lesson-progress-status
+                      role="status"
+                      aria-live="polite"
+                    ></p>
+                    <div class="accesslearn-career-bridge">
+                      <p>
+                        When you are ready, continue from this lesson into accessible roles and shareable learning proof.
+                      </p>
+                      <a class="accesslearn-career-link" href="jobs.html">Explore career opportunities</a>
+                    </div>
+                  </section>
                   <figure>
                     <img src="../assets/img/1lhlc1k4XRfVWDFTjczeaSoRpKlMY3dAX.png" alt="Evon afro" loading="lazy" />
                   </figure>
@@ -1287,6 +1330,7 @@ alert(example);
     </div>
     <script src="../assets/js/popper.js"></script>
     <script src="../assets/js/bootstrap.bundle.js"></script>
+    <script src="../assets/js/accesslearn-savanna.js"></script>
     <script src="../assets/js/static-page.js"></script>
   </body>
 </html>

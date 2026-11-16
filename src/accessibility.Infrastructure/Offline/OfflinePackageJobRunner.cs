@@ -383,7 +383,7 @@ public sealed class OfflinePackageJobRunner(
         StorageUnavailableException or ProcessorUnavailableException or IOException or TimeoutException => true,
         NpgsqlException npgsql when npgsql.IsTransient => true,
         PostgresException postgres when postgres.SqlState is "40001" or "40P01" or "53300" or "53200" => true,
-        DbUpdateException { InnerException: not null } update => IsTransient(update.InnerException),
+        DbUpdateException { InnerException: { } inner } => IsTransient(inner),
         _ => false
     };
 

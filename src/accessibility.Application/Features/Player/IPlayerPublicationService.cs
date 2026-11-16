@@ -77,6 +77,7 @@ public sealed record PlayerManifestV1(
     IReadOnlyList<PlayerTranscriptLinkV1> Transcripts,
     PlayerSignLanguageV1? SignLanguage,
     PlayerAudioDescriptionV1? AudioDescription,
+    PlayerOfflinePackageV1? OfflinePackage,
     IReadOnlyList<string> Warnings);
 
 public sealed record PlayerMediaV1(
@@ -100,13 +101,24 @@ public sealed record PlayerTranscriptLinkV1(
 
 public sealed record PlayerSignLanguageV1(
     string Language,
+    string Label,
     string Url,
-    long SyncOffsetMilliseconds);
+    long SyncOffsetMilliseconds,
+    bool IsHumanReviewed,
+    string CreationMethod);
 
 public sealed record PlayerAudioDescriptionV1(
     string Url,
     long SyncOffsetMilliseconds,
     string Mode);
+
+public sealed record PlayerOfflinePackageV1(
+    string Profile,
+    string Label,
+    string Url,
+    string ContentType,
+    long ByteLength,
+    string Sha256);
 
 public sealed record PublicTranscriptV1(
     Guid LessonId,

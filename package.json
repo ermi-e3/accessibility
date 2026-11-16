@@ -1,0 +1,26 @@
+{
+  "name": "accesslearn-ethiopia",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.21.0 <25" },
+  "packageManager": "npm@11.19.0",
+  "scripts": {
+    "import:savanna": "node scripts/import-savanna.mjs",
+    "build": "npm --prefix src/accessibility.Player run build && npm run demo:sync-player",
+    "demo:sync-player": "node scripts/sync-demo-assets.mjs",
+    "demo:generate-media": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-sample-media.ps1",
+    "demo:prepare": "npm run build && npm run demo:generate-media",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:contracts": "vitest run tests/track2.contracts.test.ts",
+    "browsers": "playwright install chromium",
+    "serve:fixtures": "node scripts/serve-fixtures.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.1",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  }
+}

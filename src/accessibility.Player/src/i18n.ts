@@ -16,6 +16,7 @@ const messages = {
     captionsOff: "Captions off",
     captionSettings: "Caption settings",
     transcript: "Transcript",
+    transcriptLanguage: "Transcript language",
     transcriptSearch: "Search transcript",
     transcriptEmpty: "No matching transcript segments",
     signLanguage: "Ethiopian Sign Language",
@@ -27,11 +28,16 @@ const messages = {
     size: "Sign window size",
     minimize: "Minimize sign window",
     restore: "Restore sign window",
+    maximize: "Maximize sign window",
+    exitMaximize: "Restore sign window size",
+    resizeSign: "Resize sign window",
+    disableSign: "Disable sign-language interpretation",
     close: "Close",
     keyboardHelp: "Keyboard help",
-    signMovementHelp: "Use arrow keys to move the sign-language window. Hold Shift for one-pixel movement. Other player shortcuts remain available.",
+    signMovementHelp: "Use arrow keys to move the sign-language window. Hold Control and use arrow keys to resize. Hold Shift for one-pixel precision.",
     fullscreenFailed: "Fullscreen could not be opened.",
     settings: "Settings",
+    installOffline: "Install for offline use",
     captionSize: "Caption text size",
     captionTextColor: "Caption text color",
     captionBackground: "Caption background color",
@@ -51,7 +57,9 @@ const messages = {
     missingEnglishCaptions: "English captions are unavailable.",
     missingAmharicCaptions: "Amharic captions are unavailable.",
     missingSignLanguage: "Ethiopian Sign Language interpretation is unavailable.",
-    missingAudioDescription: "Audio description is unavailable."
+    missingAudioDescription: "Audio description is unavailable.",
+    amharicDraftNotReviewed: "The Amharic translation is a draft and has not been reviewed.",
+    ethslDemoNotReviewed: "The sign-language window uses control-demo media until an educator uploads reviewed EthSL interpretation."
   },
   am: {
     player: "ተደራሽ የትምህርት ማጫወቻ",
@@ -68,6 +76,7 @@ const messages = {
     captionsOff: "ጽሑፍ መግለጫ ጠፍቷል",
     captionSettings: "የጽሑፍ መግለጫ ቅንብሮች",
     transcript: "የንግግር ጽሑፍ",
+    transcriptLanguage: "የንግግር ጽሑፍ ቋንቋ",
     transcriptSearch: "የንግግር ጽሑፍ ፈልግ",
     transcriptEmpty: "የሚዛመድ ጽሑፍ አልተገኘም",
     signLanguage: "የኢትዮጵያ ምልክት ቋንቋ",
@@ -79,11 +88,16 @@ const messages = {
     size: "የምልክት ቋንቋ መስኮት መጠን",
     minimize: "የምልክት ቋንቋ መስኮት አሳንስ",
     restore: "የምልክት ቋንቋ መስኮት መልስ",
+    maximize: "የምልክት ቋንቋ መስኮቱን አስፋ",
+    exitMaximize: "የምልክት ቋንቋ መስኮቱን ወደ መደበኛ መጠን መልስ",
+    resizeSign: "የምልክት ቋንቋ መስኮቱን መጠን ቀይር",
+    disableSign: "የምልክት ቋንቋ ትርጉምን አጥፋ",
     close: "ዝጋ",
     keyboardHelp: "የቁልፍ ሰሌዳ እገዛ",
-    signMovementHelp: "የምልክት ቋንቋ መስኮቱን ለማንቀሳቀስ የቀስት ቁልፎችን ይጠቀሙ። ለአንድ ፒክሰል Shift ይያዙ።",
+    signMovementHelp: "መስኮቱን ለማንቀሳቀስ ቀስቶችን ይጠቀሙ። መጠኑን ለመቀየር Control ከቀስቶች ጋር ይጠቀሙ። ለአንድ ፒክሰል Shift ይያዙ።",
     fullscreenFailed: "ሙሉ ማያ መክፈት አልተቻለም።",
     settings: "ቅንብሮች",
+    installOffline: "ትምህርቱን ከመስመር ውጭ ለመጠቀም አውርድ",
     captionSize: "የጽሑፍ መጠን",
     captionTextColor: "የጽሑፍ ቀለም",
     captionBackground: "የጽሑፍ ጀርባ ቀለም",
@@ -103,7 +117,9 @@ const messages = {
     missingEnglishCaptions: "የእንግሊዝኛ ጽሑፍ መግለጫ አይገኝም።",
     missingAmharicCaptions: "የአማርኛ ጽሑፍ መግለጫ አይገኝም።",
     missingSignLanguage: "የኢትዮጵያ ምልክት ቋንቋ ትርጉም አይገኝም።",
-    missingAudioDescription: "የድምፅ መግለጫ አይገኝም።"
+    missingAudioDescription: "የድምፅ መግለጫ አይገኝም።",
+    amharicDraftNotReviewed: "የአማርኛ ትርጉሙ ረቂቅ ነው እና አልተገምገመም።",
+    ethslDemoNotReviewed: "አስተማሪ የተገመገመ የኢትዮጵያ ምልክት ቋንቋ ቪዲዮ እስኪጭን ድረስ መስኮቱ የመቆጣጠሪያ ሙከራ ሚዲያ ያሳያል።"
   }
 } as const;
 

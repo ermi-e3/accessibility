@@ -1,0 +1,37 @@
+{
+    "lessonId":  "demo-accessible-careers",
+    "publicationId":  "8ed95274-f7dd-4d4d-a490-975d4377b2b5",
+    "language":  "am",
+    "revision":  1,
+    "isHumanReviewed":  false,
+    "segments":  [
+                     {
+                         "sequence":  0,
+                         "startMilliseconds":  300,
+                         "endMilliseconds":  3480,
+                         "text":  "ወደ AccessLearn ኢትዮጵያ እንኳን ደህና መጡ።",
+                         "speakerLabel":  "Narrator"
+                     },
+                     {
+                         "sequence":  1,
+                         "startMilliseconds":  3930,
+                         "endMilliseconds":  10590,
+                         "text":  "ይህ የሙከራ ትምህርት ተደራሽ የቪዲዮ ማጫወቻ ትምህርትን ከሥራ ዕድሎች ጋር እንዴት እንደሚያገናኝ ያሳያል።",
+                         "speakerLabel":  "Narrator"
+                     },
+                     {
+                         "sequence":  2,
+                         "startMilliseconds":  11040,
+                         "endMilliseconds":  18235,
+                         "text":  "ንዑስ ጽሑፎችን ያብሩ፣ ትራንስክሪፕቱን ይክፈቱ፣ እና ትምህርቱን ለመከታተል የቁልፍ ሰሌዳ መቆጣጠሪያዎችን ይጠቀሙ።",
+                         "speakerLabel":  "Narrator"
+                     },
+                     {
+                         "sequence":  3,
+                         "startMilliseconds":  18685,
+                         "endMilliseconds":  25280,
+                         "text":  "ቪዲዮው ሲያልቅ የሥራ ዕድል መግቢያውን ይመልከቱ እና የተረጋገጠ የትምህርት ሰርተፍኬትዎን ያጋሩ።",
+                         "speakerLabel":  "Narrator"
+                     }
+                 ]
+}

@@ -1,7 +1,7 @@
 # Savanna static pages
 
-Three Savanna learner pages, frozen from the **local dev app** into plain HTML + CSS so they can be
-opened offline and used as a reference for front-end and accessibility work.
+Three Savanna learner pages, frozen from the **local dev app** into plain HTML + CSS, plus the
+AccessLearn Track 2 player, Career Gateway, public certificate integration, and a judge-facing route.
 
 Open `index.html` (or any file in `pages/`) directly with `file://` — double-clicking works, no
 server needed.
@@ -13,14 +13,18 @@ server needed.
 | `pages/homepage-v1-paced.html` | Björn Sibanda — **WR 100: Fundamentals of Effective Communication**, cohort F26-SEM-16W (31 Aug – 20 Dec 2026), week 10 of 15 | Courses dropdown (3 courses), week strip with **every week preloaded**, "continue where you left off", immediate deliverables, period progress, overall score (59.56%, "slightly behind"), upcoming events |
 | `pages/homepage-v1-self-paced.html` | Amara Nwosu — **VA-1: VA Foundations & Professional Identity** | Course-progression gauge (16% against the 70% graduation threshold), 1 of 3 modules complete, **working module switcher**, **preloaded programme modal**, pacing boost (11 days left), upcoming events |
 | `pages/concept-with-navigation.html` | Amara Nwosu — concept *"The Future of the VA Industry"* | Curriculum navigation panel (read / current / unread states) beside a full authored concept: callouts, numbered card grid, two-column comparison, icon lists, "Mark as complete". The "Need a Fast Track?" block and the Padlet reflection block are removed on request. |
+| `pages/jobs.html` | Career Gateway sample | Accessible job cards, user-triggered speech summaries, responsive zoom reflow, employer-facing certificate link, and `JobPosting` JSON-LD. |
+| `pages/certificate.html` | Amara Nwosu — public credential | Query-string credential lookup, shareable verification link, achievement details, and an Open Badges 3.0-shaped JSON-LD record. |
+| `player-integration.html` | Framework-neutral integration fixture | Player host setup, `db-player:progress` and `db-player:complete` handling, local demo progress, and a Career Gateway transition. |
+| `index.html` | Judge showcase | A numbered route through the captioned sample lesson, Career Gateway, certificate, and supporting evidence. |
 
 
 ## Layout
 
 ```
 savanna_static_pages/
-├── index.html                 landing page linking the three captures
-├── pages/*.html               the frozen pages (relative links into ../assets)
+├── index.html                 landing page linking captures and Track 2 pages
+├── pages/*.html               frozen pages plus Career Gateway and certificate pages
 ├── assets/
    ├── css/                   the application's own stylesheets, unminified — application_alx.css 
    │                          (sprockets, themed), app.css (esbuild), Google Fonts, Typekit —
@@ -51,6 +55,10 @@ the accessibility tree and no id appears twice):
 | **Programme modal** | self-paced homepage | "Program details" normally fetches `/dashboards/program_structure.json` on first open — the capture opens it once so the fetched tree is baked in. Its course and module accordions expand and collapse: React renders only the body of an *open* section, so the capture opens each one to materialise its content, pairs every toggle with the element it controls (`data-static-collapse-toggle` / `data-static-collapse-body`) and closes again the ones the app had closed. |
 | **Courses dropdown** | all | Server-rendered markup, so Bootstrap's dropdown opens it with no help: three courses across a programme group and "Other courses". |
 | **Curriculum bar** | all | The bar fixed under the header pads the content by its own height and slides away on scroll down, as `CurrentCurriculumScrollBehavior.tsx` does. |
+| **AccessLearn player host** | concept and integration fixture | Loads the bundled sample by default or a configured published lesson from `?lesson=<id>`, announces and stores progress, handles completion, and links directly to the Career Gateway. |
+| **Local sample lesson** | concept and integration fixture | Loads a rights-safe 25-second WebM, reviewed WebVTT track, transcript JSON, and local manifest without the API. |
+| **Listen to summary** | Career Gateway | Uses browser speech synthesis only after activation, provides a stop action, and leaves all summary text visible. |
+| **Certificate verification** | certificate page | Checks the sample public credential ID from the query string and exposes a shareable employer verification link. |
 | Dropdowns, modals, accordions, collapse, tooltips | all | Bootstrap's own bundle. |
 
 Everything else is inert.

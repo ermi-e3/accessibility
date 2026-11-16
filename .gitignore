@@ -10,6 +10,8 @@
 .kilo/
 .tools/
 node_modules/
+playwright-report/
+test-results/
 src/accessibility.Api/wwwroot/sdk/
 problems.md
 prompt.md
@@ -175,3 +177,4 @@ docker-compose.override.local.yml
 # deploy/
 
 Testing Prompt.md
+IMPLEMENTATION_STATUS.md
