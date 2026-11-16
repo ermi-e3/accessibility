@@ -17,7 +17,11 @@ public sealed class Transcript : AuditableEntity
         long sourceLessonRevision,
         Guid? sourceTranscriptId = null,
         Guid? sourceMediaAssetId = null,
-        long? sourceMediaVersion = null)
+        long? sourceMediaVersion = null,
+        Guid? processingJobId = null,
+        string? provider = null,
+        string? providerVersion = null,
+        Guid? revisionOfTranscriptId = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(revision, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(sourceLessonRevision, 1);
@@ -29,6 +33,10 @@ public sealed class Transcript : AuditableEntity
         SourceTranscriptId = sourceTranscriptId;
         SourceMediaAssetId = sourceMediaAssetId;
         SourceMediaVersion = sourceMediaVersion;
+        ProcessingJobId = processingJobId;
+        Provider = DomainValidation.OptionalText(provider, nameof(provider), 100);
+        ProviderVersion = DomainValidation.OptionalText(providerVersion, nameof(providerVersion), 100);
+        RevisionOfTranscriptId = revisionOfTranscriptId;
     }
 
     public Guid LessonId { get; private set; }
@@ -46,6 +54,14 @@ public sealed class Transcript : AuditableEntity
     public Guid? SourceMediaAssetId { get; private set; }
 
     public long? SourceMediaVersion { get; private set; }
+
+    public Guid? ProcessingJobId { get; private set; }
+
+    public string? Provider { get; private set; }
+
+    public string? ProviderVersion { get; private set; }
+
+    public Guid? RevisionOfTranscriptId { get; private set; }
 
     public ReviewStatus ReviewStatus { get; private set; } = ReviewStatus.Draft;
 

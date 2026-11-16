@@ -327,6 +327,46 @@ public sealed class LessonApiTests
             frozenTranscript.GetProperty("segments")[0].GetProperty("text").GetString());
     }
 
+    [DatabaseIntegrationFact]
+    public async Task ProcessingApiIsIdempotentAndSupportsCancellation()
+    {
+        using var factory = new LessonApiFactory();
+        var owner = await SeedEducatorAsync(factory.Services);
+        var credential = await SeedClientAsync(
+            factory.Services,
+            owner.Id,
+            [
+                AccessLearnScopes.LessonsWrite,
+                AccessLearnScopes.ResourcesWrite,
+                AccessLearnScopes.ProcessingRead,
+                AccessLearnScopes.ProcessingWrite
+            ]);
+        using var client = factory.CreateSecureClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        var lesson = await client.PostAsJsonAsync("/api/v1/lessons", LessonRequest());
+        var lessonId = (await lesson.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        using var media = Multipart("lesson.wav", "audio/wav", CreateWaveHeader());
+        var upload = await client.PostAsync($"/api/v1/lessons/{lessonId}/assets?role=primaryAudio", media);
+        var assetId = (await upload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var request = new { sourceAssetId = assetId, targetLanguages = new[] { "en", "am" } };
+        client.DefaultRequestHeaders.Add("Idempotency-Key", "processing-api-test");
+
+        var first = await client.PostAsJsonAsync($"/api/v1/lessons/{lessonId}/processing-jobs", request);
+        var second = await client.PostAsJsonAsync($"/api/v1/lessons/{lessonId}/processing-jobs", request);
+        var firstJob = await first.Content.ReadFromJsonAsync<JsonElement>();
+        var secondJob = await second.Content.ReadFromJsonAsync<JsonElement>();
+        var jobId = firstJob.GetProperty("id").GetGuid();
+        Assert.Equal(jobId, secondJob.GetProperty("id").GetGuid());
+        Assert.Equal(1, factory.ProcessingScheduler.EnqueueCount);
+
+        var cancelled = await client.PostAsync(
+            $"/api/v1/processing-jobs/{jobId}/cancel",
+            null);
+        Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+        Assert.Equal("cancelled", (await cancelled.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
+        Assert.Equal(1, factory.ProcessingScheduler.DeleteCount);
+    }
+
     private static object LessonRequest() => new
     {
         title = $"Lesson {Guid.NewGuid():N}",
@@ -442,6 +482,8 @@ internal sealed class LessonApiFactory : WebApplicationFactory<Program>
 
     public FakeObjectStorage Storage { get; } = new();
 
+    public FakeScheduler ProcessingScheduler { get; } = new();
+
     public HttpClient CreateSecureClient()
     {
         return CreateClient(new WebApplicationFactoryClientOptions
@@ -459,20 +501,25 @@ internal sealed class LessonApiFactory : WebApplicationFactory<Program>
             new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Database"] = database,
+                ["ConnectionStrings:Hangfire"] = database,
                 ["ObjectStorage:ServiceUrl"] = "http://localhost:9000",
                 ["ObjectStorage:AccessKey"] = "test",
                 ["ObjectStorage:SecretKey"] = "test",
                 ["ObjectStorage:BucketName"] = "test",
                 ["ApiKeyAuthentication:Pepper"] = new string('p', 48),
                 ["MediaProbe:ExecutablePath"] = "test-double",
-                ["LessonIngest:QuarantinePath"] = _quarantinePath
+                ["LessonIngest:QuarantinePath"] = _quarantinePath,
+                ["Processing:WorkerEnabled"] = "false",
+                ["Processing:DashboardEnabled"] = "false"
             }));
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<IObjectStorage>();
             services.RemoveAll<IMediaProbe>();
+            services.RemoveAll<IBackgroundJobScheduler>();
             services.AddSingleton<IObjectStorage>(Storage);
             services.AddSingleton<IMediaProbe>(new FakeMediaProbe());
+            services.AddSingleton<IBackgroundJobScheduler>(ProcessingScheduler);
         });
     }
 

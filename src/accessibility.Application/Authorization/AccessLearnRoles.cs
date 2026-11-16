@@ -17,5 +17,11 @@ public static class AccessLearnPolicies
 
     public const string ResourcesWrite = "ResourcesWrite";
 
+    public const string ResourcesRead = "ResourcesRead";
+
+    public const string ProcessingRead = "ProcessingRead";
+
+    public const string ProcessingWrite = "ProcessingWrite";
+
     public const string LessonsPublish = "LessonsPublish";
 }

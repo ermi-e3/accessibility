@@ -61,6 +61,24 @@ public sealed class StoredFile : AuditableEntity
         Status = StoredFileStatus.Deleted;
     }
 
+    public void MarkDeleting()
+    {
+        if (Status != StoredFileStatus.Rejected)
+        {
+            throw new InvalidOperationException("Only a rejected file can be claimed for deletion.");
+        }
+        Status = StoredFileStatus.Deleting;
+    }
+
+    public void RestoreRejected()
+    {
+        if (Status != StoredFileStatus.Deleting)
+        {
+            throw new InvalidOperationException("Only a deleting file can return to rejected state.");
+        }
+        Status = StoredFileStatus.Rejected;
+    }
+
     public void RetryQuarantine()
     {
         if (Status != StoredFileStatus.Rejected)
@@ -68,6 +86,21 @@ public sealed class StoredFile : AuditableEntity
             throw new InvalidOperationException("Only a rejected file can return to quarantine.");
         }
 
+        RejectionReason = null;
+        Status = StoredFileStatus.Quarantined;
+    }
+
+    public void RefreshQuarantineMetadata(string contentType, long byteLength, string sha256)
+    {
+        if (Status is not (StoredFileStatus.Quarantined or StoredFileStatus.Rejected))
+        {
+            throw new InvalidOperationException("Only quarantined or rejected files can refresh retry metadata.");
+        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(byteLength, 1);
+        ContentType = DomainValidation.RequiredText(contentType, nameof(contentType), 255).ToLowerInvariant();
+        ByteLength = byteLength;
+        Sha256 = DomainValidation.Sha256(sha256, nameof(sha256));
+        ETag = null;
         RejectionReason = null;
         Status = StoredFileStatus.Quarantined;
     }

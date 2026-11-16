@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Hangfire;
 
 namespace Accessibility.Infrastructure.Persistence;
 
@@ -40,6 +41,10 @@ public static class DatabaseInitializer
             await migrationDatabase.Database.MigrateAsync(cancellationToken);
         }
         logger.LogInformation("Database migrations are current.");
+
+        logger.LogInformation("Ensuring Hangfire storage schema and tables.");
+        _ = scope.ServiceProvider.GetRequiredService<JobStorage>();
+        logger.LogInformation("Hangfire storage initialization is complete.");
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         logger.LogInformation("Ensuring AccessLearn Identity roles and bootstrap administrator.");

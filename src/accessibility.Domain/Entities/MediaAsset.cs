@@ -14,7 +14,10 @@ public sealed class MediaAsset : AuditableEntity
         Guid storedFileId,
         MediaAssetRole role,
         string? language = null,
-        long syncOffsetMilliseconds = 0)
+        long syncOffsetMilliseconds = 0,
+        Guid? sourceMediaAssetId = null,
+        long? sourceMediaVersion = null,
+        Guid? processingJobId = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(syncOffsetMilliseconds, 0);
         LessonId = lessonId != Guid.Empty ? lessonId : throw new ArgumentException("Lesson is required.", nameof(lessonId));
@@ -22,6 +25,9 @@ public sealed class MediaAsset : AuditableEntity
         Role = role;
         Language = language is null ? null : DomainValidation.LanguageTag(language, nameof(language));
         SyncOffsetMilliseconds = syncOffsetMilliseconds;
+        SourceMediaAssetId = sourceMediaAssetId;
+        SourceMediaVersion = sourceMediaVersion;
+        ProcessingJobId = processingJobId;
 
         if (role == MediaAssetRole.SignLanguage && Language != LanguageTags.EthiopianSignLanguage)
         {
@@ -54,6 +60,12 @@ public sealed class MediaAsset : AuditableEntity
     public bool IsHumanReviewed { get; private set; }
 
     public string? AccessibilityMode { get; private set; }
+
+    public Guid? SourceMediaAssetId { get; private set; }
+
+    public long? SourceMediaVersion { get; private set; }
+
+    public Guid? ProcessingJobId { get; private set; }
 
     public void MarkReady(long? durationMilliseconds, int? width, int? height, string? codec)
     {
@@ -110,6 +122,16 @@ public sealed class MediaAsset : AuditableEntity
     {
         Status = ResourceStatus.Rejected;
         IsActive = false;
+    }
+
+    public void Retry()
+    {
+        if (Status != ResourceStatus.Rejected)
+        {
+            throw new InvalidOperationException("Only a rejected asset can be retried.");
+        }
+        Status = ResourceStatus.Pending;
+        IsActive = true;
     }
 
     public void Supersede()

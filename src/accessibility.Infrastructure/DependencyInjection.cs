@@ -2,6 +2,7 @@ using Accessibility.Application.Abstractions;
 using Accessibility.Application.Authorization;
 using Accessibility.Application.Features.Lessons;
 using Accessibility.Application.Features.Player;
+using Accessibility.Application.Features.Processing;
 using Accessibility.Infrastructure.Authorization;
 using Accessibility.Infrastructure.Health;
 using Accessibility.Infrastructure.Identity;
@@ -11,6 +12,8 @@ using Accessibility.Infrastructure.Player;
 using Accessibility.Infrastructure.Storage;
 using Amazon.Runtime;
 using Amazon.S3;
+using Hangfire;
+using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -33,15 +36,39 @@ public static class DependencyInjection
         {
             throw new InvalidOperationException("Connection string 'Database' is required.");
         }
+        var hangfireConnectionString = configuration.GetConnectionString("Hangfire");
+        if (string.IsNullOrWhiteSpace(hangfireConnectionString))
+        {
+            throw new InvalidOperationException("Connection string 'Hangfire' is required.");
+        }
+        var prepareHangfireSchema = configuration.GetValue("Hangfire:PrepareSchemaIfNecessary", false);
 
         services.AddSingleton(TimeProvider.System);
         services.AddDbContext<AccessLearnDbContext>(options =>
-            options.UseNpgsql(
-                connectionString,
-                npgsql => npgsql.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(5),
-                    errorCodesToAdd: null)));
+            options.UseNpgsql(connectionString));
+        services.AddHangfire(configuration => configuration
+            .UseSimpleAssemblyNameTypeSerializer()
+            .UseRecommendedSerializerSettings()
+            .UsePostgreSqlStorage(
+                options => options.UseNpgsqlConnection(hangfireConnectionString),
+                new PostgreSqlStorageOptions
+                {
+                    SchemaName = "hangfire",
+                    PrepareSchemaIfNecessary = prepareHangfireSchema,
+                    QueuePollInterval = TimeSpan.FromSeconds(5)
+                }));
+        var processingRuntime = configuration
+            .GetSection(ProcessingRuntimeOptions.SectionName)
+            .Get<ProcessingRuntimeOptions>() ?? new ProcessingRuntimeOptions();
+        if (processingRuntime.WorkerEnabled)
+        {
+            services.AddHangfireServer(options =>
+            {
+                options.WorkerCount = processingRuntime.WorkerCount;
+                options.Queues = ["processing"];
+                options.ServerName = $"accesslearn-processing-{Environment.MachineName}";
+            });
+        }
 
         services
             .AddIdentityCore<ApplicationUser>(options =>
@@ -120,6 +147,24 @@ public static class DependencyInjection
                 policy.RequireAuthenticatedUser();
                 policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.ResourcesWrite));
             })
+            .AddPolicy(AccessLearnPolicies.ResourcesRead, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.ResourcesRead));
+            })
+            .AddPolicy(AccessLearnPolicies.ProcessingRead, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.ProcessingRead));
+            })
+            .AddPolicy(AccessLearnPolicies.ProcessingWrite, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.ProcessingWrite));
+            })
             .AddPolicy(AccessLearnPolicies.LessonsPublish, policy =>
             {
                 policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
@@ -154,6 +199,48 @@ public static class DependencyInjection
         services.AddHostedService<UploadQuarantineCleanupService>();
         services.AddSingleton<IMediaProbe, FfprobeMediaProbe>();
         services.AddScoped<ILessonIngestService, LessonIngestService>();
+        services
+            .AddOptions<MediaProcessingOptions>()
+            .Bind(configuration.GetSection(MediaProcessingOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.FfmpegPath), "MediaProcessing:FfmpegPath is required.")
+            .Validate(options => options.TimeoutMinutes is >= 1 and <= 120, "MediaProcessing:TimeoutMinutes must be between 1 and 120.")
+            .ValidateOnStart();
+        services
+            .AddOptions<ProcessingRuntimeOptions>()
+            .Bind(configuration.GetSection(ProcessingRuntimeOptions.SectionName))
+            .Validate(options => options.WorkerCount is >= 1 and <= 32, "Processing:WorkerCount must be between 1 and 32.")
+            .Validate(
+                options => options.WorkspaceMaximumAgeMinutes is >= 30 and <= 10_080,
+                "Processing:WorkspaceMaximumAgeMinutes must be between 30 and 10080.")
+            .ValidateOnStart();
+        services
+            .AddOptions<WhisperOptions>()
+            .Bind(configuration.GetSection(WhisperOptions.SectionName))
+            .Validate(options => !string.IsNullOrWhiteSpace(options.ExecutablePath), "Whisper:ExecutablePath is required.")
+            .Validate(options => !string.IsNullOrWhiteSpace(options.ModelPath), "Whisper:ModelPath is required.")
+            .Validate(options => options.Threads is >= 1 and <= 64, "Whisper:Threads must be between 1 and 64.")
+            .Validate(options => options.TimeoutMinutes is >= 1 and <= 120, "Whisper:TimeoutMinutes must be between 1 and 120.")
+            .ValidateOnStart();
+        services
+            .AddOptions<GoogleTranslationOptions>()
+            .Bind(configuration.GetSection(GoogleTranslationOptions.SectionName))
+            .Validate(
+                options => !options.Enabled || !string.IsNullOrWhiteSpace(options.ProjectId),
+                "GoogleTranslation:ProjectId is required when Google Translation is enabled.")
+            .ValidateOnStart();
+        services.AddSingleton<IMediaProcessingProvider, FfmpegMediaProcessingProvider>();
+        services.AddSingleton<ITranscriptionProvider, WhisperCppTranscriptionProvider>();
+        services.AddSingleton<ITranslationProvider, GoogleCloudTranslationProvider>();
+        services.AddSingleton<ITranscriptFormatService, TranscriptFormatService>();
+        services.AddScoped<IBackgroundJobScheduler, HangfireProcessingJobScheduler>();
+        services.AddScoped<IProcessingService, ProcessingService>();
+        services.AddScoped<ProcessingJobRunner>();
+        services.AddSingleton<ProcessingCancellationRegistry>();
+        if (processingRuntime.WorkerEnabled)
+        {
+            services.AddHostedService<ProcessingJobReconciler>();
+            services.AddHostedService<ProcessingWorkspaceCleanupService>();
+        }
         services
             .AddOptions<PlayerDeliveryOptions>()
             .Bind(configuration.GetSection(PlayerDeliveryOptions.SectionName))
@@ -212,6 +299,7 @@ public static class DependencyInjection
         });
         services.AddSingleton<IObjectStorage, S3ObjectStorage>();
         services.AddSingleton<ObjectStorageProvisioner>();
+        services.AddHostedService<RejectedObjectCleanupService>();
 
         services.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>(

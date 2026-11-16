@@ -54,4 +54,9 @@ public sealed class OfflinePackage : AuditableEntity
         Error = DomainValidation.RequiredText(error, nameof(error), 2_000);
         Status = OfflinePackageStatus.Failed;
     }
+
+    public void MarkStale()
+    {
+        Status = OfflinePackageStatus.Stale;
+    }
 }

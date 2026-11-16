@@ -4,6 +4,8 @@
 @accessibility.Api_TranscriptId = replace-with-transcript-id
 @accessibility.Api_TranscriptVersion = 1
 @accessibility.Api_LessonVersion = 1
+@accessibility.Api_SourceAssetId = replace-with-primary-media-asset-id
+@accessibility.Api_ProcessingJobId = replace-with-processing-job-id
 
 GET {{accessibility.Api_HostAddress}}/health/live
 Accept: application/json
@@ -46,6 +48,25 @@ If-Match: "{{accessibility.Api_LessonVersion}}"
 
 GET {{accessibility.Api_HostAddress}}/api/v1/public/lessons/{{accessibility.Api_LessonId}}/manifest
 Accept: application/json
+
+###
+
+POST {{accessibility.Api_HostAddress}}/api/v1/lessons/{{accessibility.Api_LessonId}}/processing-jobs
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+Idempotency-Key: demo-processing-request
+
+{
+  "sourceAssetId": "{{accessibility.Api_SourceAssetId}}",
+  "targetLanguages": ["en", "am"]
+}
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/processing-jobs/{{accessibility.Api_ProcessingJobId}}
+Accept: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
 
 ###
 
