@@ -44,6 +44,8 @@ public sealed class OfflinePackageCleanupService(
                   package.ErrorCode != "PROCESSOR_UNAVAILABLE" &&
                   package.ErrorCode != "LEASE_EXPIRED")) &&
                 package.UpdatedAt < cutoff)
+            .OrderBy(package => package.UpdatedAt)
+            .ThenBy(package => package.Id)
             .Select(package => package.Id)
             .Take(20)
             .ToListAsync(cancellationToken);
