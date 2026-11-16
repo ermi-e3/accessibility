@@ -38,6 +38,7 @@
     const locale = query.get('locale') === 'am' ? 'am' : 'en';
     const configuredApiBase = root.dataset.apiBase;
     const configuredSdkSource = root.dataset.sdkSrc;
+    const offlineInstaller = root.dataset.offlineInstaller;
     const apiBase = configuredApiBase === 'same-origin' && ['http:', 'https:'].includes(window.location.protocol)
       ? window.location.origin
       : configuredApiBase;
@@ -91,6 +92,8 @@
       renderPercent(0, 'Player host configuration is incomplete.');
       return;
     }
+
+    if (offlineInstaller === 'false') player.setAttribute('offline-installer', 'false');
 
     const saved = readProgress(`accesslearn:lesson-progress:${lessonId}`);
     if (saved && Number.isFinite(saved.percent)) {

@@ -12,6 +12,10 @@ public static class AccessLearnScopes
 
     public const string ProcessingWrite = "processing:write";
 
+    public const string OfflineRead = "offline:read";
+
+    public const string OfflineWrite = "offline:write";
+
     public const string LessonsPublish = "lessons:publish";
 }
 

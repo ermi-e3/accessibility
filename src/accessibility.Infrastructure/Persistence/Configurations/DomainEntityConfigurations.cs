@@ -369,6 +369,9 @@ internal sealed class OfflinePackageConfiguration : IEntityTypeConfiguration<Off
         builder.Property(package => package.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(package => package.Checksum).HasMaxLength(64).IsFixedLength();
         builder.Property(package => package.Error).HasMaxLength(2_000);
+        builder.Property(package => package.ErrorCode).HasMaxLength(100);
+        builder.Property(package => package.ExternalJobId).HasMaxLength(200);
+        builder.Property(package => package.Title).HasMaxLength(200);
 
         builder.HasOne<LessonPublication>()
             .WithMany()
@@ -384,9 +387,33 @@ internal sealed class OfflinePackageConfiguration : IEntityTypeConfiguration<Off
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(package => new { package.LessonPublicationId, package.Profile }).IsUnique();
+        builder.HasIndex(package => new { package.Status, package.LeaseExpiresAt });
         builder.ToTable(table => table.HasCheckConstraint(
             "ck_offline_packages_total_bytes",
             "total_bytes IS NULL OR total_bytes > 0"));
+    }
+}
+
+internal sealed class OfflinePackageAssetConfiguration : IEntityTypeConfiguration<OfflinePackageAsset>
+{
+    public void Configure(EntityTypeBuilder<OfflinePackageAsset> builder)
+    {
+        ConfigurationDefaults.ConfigureEntity(builder);
+        builder.Property(asset => asset.Path).HasMaxLength(512).IsRequired();
+        builder.Property(asset => asset.Role).HasMaxLength(50).IsRequired();
+        builder.Property(asset => asset.Language).HasMaxLength(35);
+        builder.Property(asset => asset.DisplayName).HasMaxLength(200);
+        builder.HasOne<OfflinePackage>()
+            .WithMany()
+            .HasForeignKey(asset => asset.OfflinePackageId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<StoredFile>()
+            .WithMany()
+            .HasForeignKey(asset => asset.StoredFileId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(asset => new { asset.OfflinePackageId, asset.Sequence }).IsUnique();
+        builder.HasIndex(asset => new { asset.OfflinePackageId, asset.Path }).IsUnique();
+        builder.HasIndex(asset => asset.StoredFileId).IsUnique();
     }
 }
 

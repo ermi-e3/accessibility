@@ -146,6 +146,11 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("i_x_caption_artifacts_stored_file_id");
 
+                    b.HasIndex("TranscriptId", "Format", "Status")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_caption_artifacts_transcript_id_format_status")
+                        .HasFilter("status = 'Ready'");
+
                     b.HasIndex("TranscriptId", "Format", "GeneratorVersion", "Checksum")
                         .IsUnique()
                         .HasDatabaseName("i_x_caption_artifacts_transcript_id_format_generator_version_ch~");
@@ -630,11 +635,19 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
                     b.Property<string>("Checksum")
                         .HasMaxLength(64)
                         .HasColumnType("character(64)")
                         .HasColumnName("checksum")
                         .IsFixedLength();
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -644,6 +657,24 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("error");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("error_code");
+
+                    b.Property<Guid?>("ExecutionLeaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("execution_lease_id");
+
+                    b.Property<string>("ExternalJobId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("external_job_id");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_expires_at");
 
                     b.Property<Guid>("LessonPublicationId")
                         .HasColumnType("uuid")
@@ -659,11 +690,20 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("profile");
 
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
 
                     b.Property<long?>("TotalBytes")
                         .HasColumnType("bigint")
@@ -695,10 +735,75 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("i_x_offline_packages_lesson_publication_id_profile");
 
+                    b.HasIndex("Status", "LeaseExpiresAt")
+                        .HasDatabaseName("i_x_offline_packages_status_lease_expires_at");
+
                     b.ToTable("offline_packages", t =>
                         {
                             t.HasCheckConstraint("ck_offline_packages_total_bytes", "total_bytes IS NULL OR total_bytes > 0");
                         });
+                });
+
+            modelBuilder.Entity("Accessibility.Domain.Entities.OfflinePackageAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_required");
+
+                    b.Property<string>("Language")
+                        .HasMaxLength(35)
+                        .HasColumnType("character varying(35)")
+                        .HasColumnName("language");
+
+                    b.Property<Guid>("OfflinePackageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("offline_package_id");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("path");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("role");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<Guid>("StoredFileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stored_file_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_offline_package_assets");
+
+                    b.HasIndex("StoredFileId")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_offline_package_assets_stored_file_id");
+
+                    b.HasIndex("OfflinePackageId", "Path")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_offline_package_assets_offline_package_id_path");
+
+                    b.HasIndex("OfflinePackageId", "Sequence")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_offline_package_assets_offline_package_id_sequence");
+
+                    b.ToTable("offline_package_assets");
                 });
 
             modelBuilder.Entity("Accessibility.Domain.Entities.ProcessingIdempotencyRequest", b =>
@@ -1664,6 +1769,23 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ZipFileId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("f_k_offline_packages_stored_files_zip_file_id");
+                });
+
+            modelBuilder.Entity("Accessibility.Domain.Entities.OfflinePackageAsset", b =>
+                {
+                    b.HasOne("Accessibility.Domain.Entities.OfflinePackage", null)
+                        .WithMany()
+                        .HasForeignKey("OfflinePackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_offline_package_assets_offline_packages_offline_package_id");
+
+                    b.HasOne("Accessibility.Domain.Entities.StoredFile", null)
+                        .WithMany()
+                        .HasForeignKey("StoredFileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("f_k_offline_package_assets_stored_files_stored_file_id");
                 });
 
             modelBuilder.Entity("Accessibility.Domain.Entities.ProcessingIdempotencyRequest", b =>

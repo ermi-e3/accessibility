@@ -23,5 +23,9 @@ public static class AccessLearnPolicies
 
     public const string ProcessingWrite = "ProcessingWrite";
 
+    public const string OfflineRead = "OfflineRead";
+
+    public const string OfflineWrite = "OfflineWrite";
+
     public const string LessonsPublish = "LessonsPublish";
 }

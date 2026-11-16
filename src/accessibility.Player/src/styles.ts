@@ -19,13 +19,13 @@ export const playerStyles = `
 *, *::before, *::after { box-sizing: border-box; }
 button, input, select { font: inherit; }
 button, select, input[type="range"], input[type="search"] { min-height: 2.75rem; }
-button, select {
+button, select, a.control {
   border: 1px solid var(--al-border);
   border-radius: 0.4rem;
   background: var(--al-surface);
   color: var(--al-text);
 }
-button { cursor: pointer; padding: 0.45rem 0.7rem; }
+button, a.control { cursor: pointer; padding: 0.45rem 0.7rem; text-decoration: none; display: inline-flex; align-items: center; }
 button[hidden], [hidden] { display: none !important; }
 button:disabled { cursor: not-allowed; opacity: 0.55; }
 :focus-visible { outline: 3px solid var(--al-focus); outline-offset: 3px; }
