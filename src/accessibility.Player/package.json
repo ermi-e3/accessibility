@@ -6,9 +6,11 @@
   "scripts": {
     "build": "tsc --noEmit && vite build && node scripts/create-versioned-alias.mjs",
     "dev": "vite --host 127.0.0.1",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:browser": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "typescript": "7.0.2",
     "vite": "8.3.8"
   }

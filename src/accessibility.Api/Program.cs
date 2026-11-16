@@ -207,6 +207,7 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseForwardedHeaders();
 app.UseHttpsRedirection();
+app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRequestLocalization();
 app.UseCors();

@@ -295,7 +295,6 @@ public sealed class LessonIngestService(
             if (activeAssets.Count > 0)
             {
                 await MarkDependentResourcesStaleAsync(
-                    lesson.Id,
                     activeAssets.Select(active => active.Id).ToArray(),
                     cancellationToken);
                 await using var transaction = await database.Database.BeginTransactionAsync(cancellationToken);
@@ -343,7 +342,6 @@ public sealed class LessonIngestService(
     }
 
     private async Task MarkDependentResourcesStaleAsync(
-        Guid lessonId,
         Guid[] sourceAssetIds,
         CancellationToken cancellationToken)
     {
@@ -363,13 +361,6 @@ public sealed class LessonIngestService(
                             sourceAssetIds.Contains(asset.SourceMediaAssetId.Value) && asset.IsActive)
             .ToListAsync(cancellationToken);
         foreach (var derivedAsset in derivedAssets) derivedAsset.Supersede();
-        var packages = await (
-                from package in database.OfflinePackages
-                join publication in database.LessonPublications on package.LessonPublicationId equals publication.Id
-                where publication.LessonId == lessonId && package.Status != OfflinePackageStatus.Stale
-                select package)
-            .ToListAsync(cancellationToken);
-        foreach (var package in packages) package.MarkStale();
     }
 
     private IQueryable<Lesson> VisibleLessons()

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#8f1d1d">
+  <link rel="manifest" href="/offline/manifest.webmanifest">
+  <title>AccessLearn Offline Library</title>
+  <style>
+    :root{font-family:Inter,"Noto Sans Ethiopic",system-ui,sans-serif;color:#171717;background:#f4f2ed;line-height:1.5}
+    body{margin:0}header,main{width:min(64rem,calc(100% - 2rem));margin:auto}header{padding:1rem 0}h1{margin:.5rem 0}
+    .panel,.card{background:#fff;border:1px solid #676767;border-radius:.65rem;padding:1rem;margin:1rem 0}
+    form{display:flex;gap:.5rem;flex-wrap:wrap}input{flex:1 1 18rem;padding:.65rem}button,a.button{min-height:2.75rem;padding:.55rem .8rem;border:1px solid #555;border-radius:.4rem;background:#fff;color:#171717;text-decoration:none;cursor:pointer}
+    button.primary{background:#8f1d1d;color:#fff;border-color:#8f1d1d}button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #005fcc;outline-offset:3px}
+    .actions{display:flex;gap:.5rem;flex-wrap:wrap}.status{min-height:1.5rem}.error{color:#8b0000;font-weight:700}progress{width:100%;height:1.3rem}
+    .library{list-style:none;padding:0}.metadata{color:#4a4a4a}.lesson-view section{border-top:1px solid #ccc;padding-top:.75rem}audio{width:100%}
+    .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+    @media(max-width:32rem){form>*{flex-basis:100%}.actions>*{flex:1}}
+    @media(forced-colors:active){.panel,.card,button{border-color:CanvasText}}
+  </style>
+</head>
+<body>
+  <header><h1 data-i18n="title">Offline lesson library</h1><p data-i18n="intro">Download lightweight audio and text while connected, then learn without a network.</p></header>
+  <main>
+    <section class="panel" aria-labelledby="download-title">
+      <h2 id="download-title" data-i18n="downloadTitle">Download a published lesson</h2>
+      <form data-download-form>
+        <label class="visually-hidden" for="lesson-id" data-i18n="lessonId">Lesson ID</label>
+        <input id="lesson-id" name="lesson" required autocomplete="off" placeholder="Lesson ID">
+        <button class="primary" type="submit" data-i18n="download">Download</button>
+      </form>
+      <p class="status" data-status role="status" aria-live="polite"></p>
+      <progress data-progress value="0" max="1" hidden aria-label="Download progress"></progress>
+    </section>
+    <section aria-labelledby="library-title">
+      <h2 id="library-title" data-i18n="library">Downloaded lessons</h2>
+      <p data-empty data-i18n="empty">No offline lessons have been downloaded.</p>
+      <ul class="library" data-library></ul>
+    </section>
+    <section class="panel lesson-view" data-lesson-view hidden aria-live="polite"></section>
+  </main>
+  <script type="module" src="/offline/app.js"></script>
+</body>
+</html>

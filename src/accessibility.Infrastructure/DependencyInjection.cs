@@ -3,12 +3,14 @@ using Accessibility.Application.Authorization;
 using Accessibility.Application.Features.Lessons;
 using Accessibility.Application.Features.Player;
 using Accessibility.Application.Features.Processing;
+using Accessibility.Application.Features.Offline;
 using Accessibility.Infrastructure.Authorization;
 using Accessibility.Infrastructure.Health;
 using Accessibility.Infrastructure.Identity;
 using Accessibility.Infrastructure.Persistence;
 using Accessibility.Infrastructure.Processing;
 using Accessibility.Infrastructure.Player;
+using Accessibility.Infrastructure.Offline;
 using Accessibility.Infrastructure.Storage;
 using Amazon.Runtime;
 using Amazon.S3;
@@ -165,6 +167,18 @@ public static class DependencyInjection
                 policy.RequireAuthenticatedUser();
                 policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.ProcessingWrite));
             })
+            .AddPolicy(AccessLearnPolicies.OfflineRead, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.OfflineRead));
+            })
+            .AddPolicy(AccessLearnPolicies.OfflineWrite, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.OfflineWrite));
+            })
             .AddPolicy(AccessLearnPolicies.LessonsPublish, policy =>
             {
                 policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
@@ -240,6 +254,8 @@ public static class DependencyInjection
         {
             services.AddHostedService<ProcessingJobReconciler>();
             services.AddHostedService<ProcessingWorkspaceCleanupService>();
+            services.AddHostedService<OfflinePackageReconciler>();
+            services.AddHostedService<OfflinePackageCleanupService>();
         }
         services
             .AddOptions<PlayerDeliveryOptions>()
@@ -254,6 +270,21 @@ public static class DependencyInjection
                 "PlayerDelivery:PublicApiBaseUrl must use HTTPS or loopback HTTP.")
             .ValidateOnStart();
         services.AddScoped<IPlayerPublicationService, PlayerPublicationService>();
+        services
+            .AddOptions<OfflineLearningOptions>()
+            .Bind(configuration.GetSection(OfflineLearningOptions.SectionName))
+            .Validate(options => options.SignedUrlMinutes is >= 1 and <= 10_080,
+                "OfflineLearning:SignedUrlMinutes must be between 1 and 10080.")
+            .Validate(options => options.MaximumPackageBytes is >= 1_048_576 and <= 1_073_741_824,
+                "OfflineLearning:MaximumPackageBytes must be between 1 MiB and 1 GiB.")
+            .Validate(options => options.RetentionHours is >= 1 and <= 720,
+                "OfflineLearning:RetentionHours must be between 1 and 720.")
+            .Validate(options => options.RetentionHours * 60 > options.SignedUrlMinutes + 60,
+                "OfflineLearning:RetentionHours must exceed signed URL lifetime by at least 60 minutes.")
+            .ValidateOnStart();
+        services.AddScoped<IOfflinePackageService, OfflinePackageService>();
+        services.AddScoped<IOfflinePackageScheduler, HangfireOfflinePackageScheduler>();
+        services.AddScoped<OfflinePackageJobRunner>();
 
         services
             .AddOptions<BootstrapAdminOptions>()

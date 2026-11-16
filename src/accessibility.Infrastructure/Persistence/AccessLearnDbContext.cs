@@ -39,6 +39,8 @@ public sealed class AccessLearnDbContext : IdentityDbContext<ApplicationUser, Id
 
     public DbSet<OfflinePackage> OfflinePackages => Set<OfflinePackage>();
 
+    public DbSet<OfflinePackageAsset> OfflinePackageAssets => Set<OfflinePackageAsset>();
+
     public DbSet<ProcessingJob> ProcessingJobs => Set<ProcessingJob>();
 
     public DbSet<ProcessingJobAttempt> ProcessingJobAttempts => Set<ProcessingJobAttempt>();

@@ -1,0 +1,17 @@
+{
+  "name": "AccessLearn Offline Library",
+  "short_name": "AccessLearn",
+  "start_url": "/offline/",
+  "scope": "/offline/",
+  "display": "standalone",
+  "background_color": "#f4f2ed",
+  "theme_color": "#8f1d1d",
+  "icons": [
+    {
+      "src": "/offline/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

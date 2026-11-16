@@ -24,7 +24,7 @@ public sealed class PlayerPublicationService(
     IOptions<PlayerDeliveryOptions> options,
     ILogger<PlayerPublicationService> logger) : IPlayerPublicationService
 {
-    private const string SchemaVersion = "1.0";
+    private const string SchemaVersion = "1.1";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly PlayerDeliveryOptions _options = options.Value;
 
@@ -340,7 +340,11 @@ public sealed class PlayerPublicationService(
                 lesson.CurrentPublicationId.Value,
                 requireCurrent: true,
                 cancellationToken);
-            if (current.LessonDraftRevision == lesson.DraftRevision)
+            if (current.LessonDraftRevision == lesson.DraftRevision &&
+                current.SchemaVersion == SchemaVersion && current.Documents is not null &&
+                current.Primary.ByteLength > 0 && !string.IsNullOrWhiteSpace(current.Primary.Sha256) &&
+                current.Captions.All(caption => caption.ByteLength > 0 && !string.IsNullOrWhiteSpace(caption.Sha256)) &&
+                await PublicationResourcesMatchAsync(lesson.Id, current, cancellationToken))
             {
                 var currentPublication = await database.LessonPublications.SingleAsync(
                     item => item.Id == lesson.CurrentPublicationId.Value,
@@ -369,8 +373,12 @@ public sealed class PlayerPublicationService(
                     file.Id,
                     file.ObjectKey,
                     file.ContentType,
+                    file.ByteLength,
+                    file.Sha256,
                     asset.Role,
                     asset.Version,
+                    asset.SourceMediaAssetId,
+                    asset.SourceMediaVersion,
                     asset.Language,
                     asset.DurationMilliseconds,
                     asset.SyncOffsetMilliseconds,
@@ -396,7 +404,9 @@ public sealed class PlayerPublicationService(
                     transcript.SourceMediaAssetId,
                     transcript.SourceMediaVersion,
                     file.Id,
-                    file.ObjectKey))
+                    file.ObjectKey,
+                    file.ByteLength,
+                    file.Sha256))
             .ToListAsync(cancellationToken);
         if (captionReferences.Count == 0)
         {
@@ -444,12 +454,46 @@ public sealed class PlayerPublicationService(
                 caption.Revision,
                 caption.FileId,
                 caption.ObjectKey,
+                caption.ByteLength,
+                caption.Sha256,
                 segments));
         }
 
         var warnings = BuildWarnings(captions, assets);
         var signLanguage = SelectSecondaryAsset(assets, MediaAssetRole.SignLanguage, primary);
         var audioDescription = SelectSecondaryAsset(assets, MediaAssetRole.AudioDescription, primary);
+        var offlineAudio = assets.SingleOrDefault(asset =>
+            asset.Role == MediaAssetRole.OfflineAudio &&
+            asset.SourceMediaAssetId == primary.AssetId &&
+            asset.SourceMediaVersion == primary.Version);
+        var documentCandidates = await (
+                from output in database.DocumentOutputs
+                join document in database.Documents on output.DocumentId equals document.Id
+                join file in database.StoredFiles on output.StoredFileId equals file.Id
+                where document.LessonId == lesson.Id && output.Kind == DocumentOutputKind.Html &&
+                      output.Status == DocumentOutputStatus.Validated && file.Status == StoredFileStatus.Ready &&
+                      output.SourceRevision == document.Version
+                select new SnapshotDocument(
+                    document.Id,
+                    output.Id,
+                    output.SourceRevision,
+                    document.Title,
+                    document.Language,
+                    file.Id,
+                    file.ObjectKey,
+                    file.ContentType,
+                    file.ByteLength,
+                    file.Sha256))
+            .ToListAsync(cancellationToken);
+        var documents = documentCandidates
+            .GroupBy(document => document.DocumentId)
+            .Select(group => group
+                .OrderByDescending(document => document.SourceRevision)
+                .ThenBy(document => document.OutputId)
+                .First())
+            .OrderBy(document => document.Title, StringComparer.Ordinal)
+            .ThenBy(document => document.DocumentId)
+            .ToArray();
         var publicationRevision = await database.LessonPublications
             .Where(publication => publication.LessonId == lesson.Id)
             .Select(publication => (int?)publication.Revision)
@@ -468,6 +512,8 @@ public sealed class PlayerPublicationService(
             captions,
             signLanguage,
             audioDescription,
+            offlineAudio,
+            documents,
             warnings);
         var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(snapshot, JsonOptions);
         if (manifestBytes.Length > 2_097_152)
@@ -523,6 +569,14 @@ public sealed class PlayerPublicationService(
         }
 
         manifestFile.MarkReady(manifestWrite.ETag);
+        if (lesson.CurrentPublicationId.HasValue)
+        {
+            var previousPackages = await database.OfflinePackages
+                .Where(package => package.LessonPublicationId == lesson.CurrentPublicationId.Value &&
+                                  package.Status != OfflinePackageStatus.Stale)
+                .ToListAsync(cancellationToken);
+            foreach (var previousPackage in previousPackages) previousPackage.MarkStale();
+        }
         lesson.Publish(publication);
         try
         {
@@ -720,6 +774,49 @@ public sealed class PlayerPublicationService(
         }
     }
 
+    private async Task<bool> PublicationResourcesMatchAsync(
+        Guid lessonId,
+        PlayerPublicationSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        var offlineAudioId = await database.MediaAssets
+            .Where(asset => asset.LessonId == lessonId && asset.Role == MediaAssetRole.OfflineAudio &&
+                            asset.IsActive && asset.Status == ResourceStatus.Ready &&
+                            asset.SourceMediaAssetId == snapshot.Primary.AssetId &&
+                            asset.SourceMediaVersion == snapshot.Primary.Version)
+            .Select(asset => (Guid?)asset.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (offlineAudioId != snapshot.OfflineAudio?.AssetId) return false;
+
+        var currentDocumentCandidates = await (
+                from output in database.DocumentOutputs
+                join document in database.Documents on output.DocumentId equals document.Id
+                join file in database.StoredFiles on output.StoredFileId equals file.Id
+                where document.LessonId == lessonId && output.Kind == DocumentOutputKind.Html &&
+                      output.Status == DocumentOutputStatus.Validated && output.SourceRevision == document.Version &&
+                      file.Status == StoredFileStatus.Ready
+                select new
+                {
+                    DocumentId = document.Id,
+                    document.Title,
+                    OutputId = output.Id,
+                    output.SourceRevision
+                })
+            .ToListAsync(cancellationToken);
+        var currentDocumentIds = currentDocumentCandidates
+            .GroupBy(document => document.DocumentId)
+            .Select(group => group
+                .OrderByDescending(document => document.SourceRevision)
+                .ThenBy(document => document.OutputId)
+                .First())
+            .OrderBy(document => document.Title, StringComparer.Ordinal)
+            .ThenBy(document => document.DocumentId)
+            .Select(document => document.OutputId)
+            .ToArray();
+        var snapshotDocumentIds = (snapshot.Documents ?? []).Select(document => document.OutputId).ToArray();
+        return currentDocumentIds.SequenceEqual(snapshotDocumentIds);
+    }
+
     private async Task EnsureAdditionalArtifactAsync(
         Transcript transcript,
         IReadOnlyList<ProviderTranscriptSegment> segments,
@@ -803,23 +900,34 @@ public sealed class PlayerPublicationService(
         PlayerPublicationSnapshot snapshot,
         CancellationToken cancellationToken)
     {
-        var assets = new[] { snapshot.Primary, snapshot.Poster, snapshot.SignLanguage, snapshot.AudioDescription }
+        var assets = new[]
+            { snapshot.Primary, snapshot.Poster, snapshot.SignLanguage, snapshot.AudioDescription, snapshot.OfflineAudio }
             .Where(asset => asset is not null)
             .Cast<SnapshotAsset>()
             .ToArray();
         var fileReferences = assets
-            .Select(asset => (asset.FileId, asset.ObjectKey))
-            .Concat(snapshot.Captions.Select(caption => (caption.FileId, caption.ObjectKey)))
+            .Select(asset => new SnapshotFileReference(asset.FileId, asset.ObjectKey, asset.ByteLength, asset.Sha256))
+            .Concat(snapshot.Captions.Select(caption =>
+                new SnapshotFileReference(caption.FileId, caption.ObjectKey, caption.ByteLength, caption.Sha256)))
+            .Concat((snapshot.Documents ?? []).Select(document =>
+                new SnapshotFileReference(document.FileId, document.ObjectKey, document.ByteLength, document.Sha256)))
             .ToArray();
         var fileIds = fileReferences.Select(reference => reference.FileId).Distinct().ToArray();
         var files = await database.StoredFiles
             .Where(file => fileIds.Contains(file.Id))
-            .Select(file => new { file.Id, file.ObjectKey })
+            .Select(file => new { file.Id, file.ObjectKey, file.ByteLength, file.Sha256 })
             .ToDictionaryAsync(file => file.Id, cancellationToken);
         if (files.Count != fileIds.Length || fileReferences.Any(reference =>
                 !files.TryGetValue(reference.FileId, out var file) || file.ObjectKey != reference.ObjectKey))
         {
             throw new FileContentInvalidException("A publication file reference is invalid.");
+        }
+        if (fileReferences.Any(reference =>
+                files.TryGetValue(reference.FileId, out var file) &&
+                (reference.ByteLength > 0 && reference.ByteLength != file.ByteLength ||
+                 !string.IsNullOrWhiteSpace(reference.Sha256) && reference.Sha256 != file.Sha256)))
+        {
+            throw new FileContentInvalidException("A publication file checksum reference is invalid.");
         }
 
         var assetIds = assets.Select(asset => asset.AssetId).ToArray();
@@ -844,6 +952,14 @@ public sealed class PlayerPublicationService(
             {
                 throw new FileContentInvalidException("A publication caption reference is invalid.");
             }
+        }
+        var documentOutputIds = (snapshot.Documents ?? []).Select(document => document.OutputId).ToArray();
+        var validDocuments = await database.DocumentOutputs.CountAsync(
+            output => documentOutputIds.Contains(output.Id) && output.Status == DocumentOutputStatus.Validated,
+            cancellationToken);
+        if (validDocuments != documentOutputIds.Length)
+        {
+            throw new FileContentInvalidException("A publication document reference is invalid.");
         }
     }
 
@@ -1065,6 +1181,8 @@ public sealed class PlayerPublicationService(
         IReadOnlyList<SnapshotCaption> Captions,
         SnapshotAsset? SignLanguage,
         SnapshotAsset? AudioDescription,
+        SnapshotAsset? OfflineAudio,
+        IReadOnlyList<SnapshotDocument>? Documents,
         IReadOnlyList<string> Warnings);
 
     private sealed record SnapshotAsset(
@@ -1072,13 +1190,35 @@ public sealed class PlayerPublicationService(
         Guid FileId,
         string ObjectKey,
         string ContentType,
+        long ByteLength,
+        string Sha256,
         MediaAssetRole Role,
         long Version,
+        Guid? SourceMediaAssetId,
+        long? SourceMediaVersion,
         string? Language,
         long? DurationMilliseconds,
         long SyncOffsetMilliseconds,
         bool IsHumanReviewed,
         string? AccessibilityMode);
+
+    private sealed record SnapshotDocument(
+        Guid DocumentId,
+        Guid OutputId,
+        long SourceRevision,
+        string Title,
+        string Language,
+        Guid FileId,
+        string ObjectKey,
+        string ContentType,
+        long ByteLength,
+        string Sha256);
+
+    private sealed record SnapshotFileReference(
+        Guid FileId,
+        string ObjectKey,
+        long ByteLength,
+        string Sha256);
 
     private sealed record SnapshotCaption(
         Guid TranscriptId,
@@ -1086,6 +1226,8 @@ public sealed class PlayerPublicationService(
         int Revision,
         Guid FileId,
         string ObjectKey,
+        long ByteLength,
+        string Sha256,
         IReadOnlyList<TranscriptSegmentModel> Segments);
 
     private sealed record CaptionReference(
@@ -1096,5 +1238,7 @@ public sealed class PlayerPublicationService(
         Guid? SourceMediaAssetId,
         long? SourceMediaVersion,
         Guid FileId,
-        string ObjectKey);
+        string ObjectKey,
+        long ByteLength,
+        string Sha256);
 }
