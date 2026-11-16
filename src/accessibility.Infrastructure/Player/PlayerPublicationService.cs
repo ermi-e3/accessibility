@@ -589,8 +589,11 @@ public sealed class PlayerPublicationService(
         {
             sign = new PlayerSignLanguageV1(
                 snapshot.SignLanguage.Language ?? LanguageTags.EthiopianSignLanguage,
+                "Ethiopian Sign Language / የኢትዮጵያ ምልክት ቋንቋ",
                 (await objectStorage.CreateReadUriAsync(snapshot.SignLanguage.ObjectKey, lifetime, cancellationToken)).ToString(),
-                snapshot.SignLanguage.SyncOffsetMilliseconds);
+                snapshot.SignLanguage.SyncOffsetMilliseconds,
+                snapshot.SignLanguage.IsHumanReviewed,
+                snapshot.SignLanguage.AccessibilityMode ?? "human-recorded");
         }
 
         PlayerAudioDescriptionV1? description = null;
@@ -600,6 +603,36 @@ public sealed class PlayerPublicationService(
                 (await objectStorage.CreateReadUriAsync(snapshot.AudioDescription.ObjectKey, lifetime, cancellationToken)).ToString(),
                 snapshot.AudioDescription.SyncOffsetMilliseconds,
                 snapshot.AudioDescription.AccessibilityMode ?? "full-mix");
+        }
+
+        PlayerOfflinePackageV1? offlinePackage = null;
+        var readyPackage = await (
+                from package in database.OfflinePackages.AsNoTracking()
+                join zip in database.StoredFiles.AsNoTracking() on package.ZipFileId equals zip.Id
+                where package.LessonPublicationId == snapshot.PublicationId &&
+                      package.Status == OfflinePackageStatus.Ready &&
+                      zip.Status == StoredFileStatus.Ready
+                orderby package.UpdatedAt descending
+                select new
+                {
+                    package.Profile,
+                    package.TotalBytes,
+                    package.Checksum,
+                    zip.ObjectKey,
+                    zip.ContentType,
+                    zip.ByteLength,
+                    zip.Sha256
+                })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (readyPackage is not null)
+        {
+            offlinePackage = new PlayerOfflinePackageV1(
+                readyPackage.Profile.ToString().ToLowerInvariant(),
+                "Download lesson for offline use",
+                (await objectStorage.CreateReadUriAsync(readyPackage.ObjectKey, lifetime, cancellationToken)).ToString(),
+                readyPackage.ContentType,
+                readyPackage.TotalBytes ?? readyPackage.ByteLength,
+                readyPackage.Checksum ?? readyPackage.Sha256);
         }
 
         return new PlayerManifestV1(
@@ -619,6 +652,7 @@ public sealed class PlayerPublicationService(
             transcriptLinks,
             sign,
             description,
+            offlinePackage,
             snapshot.Warnings);
     }
 

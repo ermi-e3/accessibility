@@ -58,6 +58,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/extract-captions.ps1
 
 Machine captions are drafts and must be reviewed before publication.
 
+## Educator Accessibility Resources
+
+The backend does not generate sign language. Educators upload a rights-cleared,
+human-recorded EthSL interpretation and explicitly mark it reviewed:
+
+```text
+POST /api/v1/lessons/{lessonId}/assets
+  ?role=signLanguage
+  &language=eth
+  &reviewed=true
+  &accessibilityMode=human-recorded
+```
+
+Use `multipart/form-data` for the MP4 or WebM file. Publishing the lesson adds
+the approved track to the player manifest; learners can then enable, move,
+resize, minimize, maximize, or disable the interpretation window.
+
+Educators can create or import Amharic transcript drafts through
+`POST /api/v1/lessons/{lessonId}/transcripts` or
+`POST /api/v1/lessons/{lessonId}/transcripts/import?language=am&format=WebVtt`,
+then approve and publish them through the existing transcript workflow.
+
+The judge fixture also exposes a downloadable ZIP containing local video,
+English captions, an explicitly unreviewed Amharic draft, transcripts, and a
+standalone `index.html` for offline learning.
+
 ## Repository Layout
 
 ```text

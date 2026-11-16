@@ -19,6 +19,15 @@
                          "url":  "/assets/media/accesslearn-demo/sample-captions.en.vtt",
                          "isDefault":  true,
                          "isHumanReviewed":  true
+                     },
+                     {
+                         "language":  "am",
+                         "label":  "Amharic draft demo - not reviewed",
+                         "url":  "/assets/media/accesslearn-demo/sample-captions.am.draft.vtt",
+                         "isDefault":  false,
+                         "isHumanReviewed":  false,
+                         "reviewStatus":  "draft",
+                         "demoOnly":  true
                      }
                  ],
     "transcripts":  [
@@ -27,13 +36,37 @@
                             "label":  "English transcript",
                             "url":  "/assets/media/accesslearn-demo/sample-transcript.en.json",
                             "isHumanReviewed":  true
+                        },
+                        {
+                            "language":  "am",
+                            "label":  "Amharic draft transcript - not reviewed",
+                            "url":  "/assets/media/accesslearn-demo/sample-transcript.am.draft.json",
+                            "isHumanReviewed":  false,
+                            "reviewStatus":  "draft",
+                            "demoOnly":  true
                         }
                     ],
-    "signLanguage":  null,
+    "signLanguage":  {
+                         "language":  "eth",
+                         "label":  "EthSL window control demo - educator recording required",
+                         "url":  "/assets/media/accesslearn-demo/sample-lesson.webm",
+                         "syncOffsetMilliseconds":  0,
+                         "isHumanReviewed":  false,
+                         "reviewStatus":  "control-demo",
+                         "demoOnly":  true
+                     },
     "audioDescription":  null,
+    "offlinePackage":  {
+                           "profile":  "complete-demo",
+                           "label":  "Portable lesson package",
+                           "url":  "/assets/offline/accesslearn-demo/accesslearn-demo-complete.zip",
+                           "contentType":  "application/zip",
+                           "byteLength":  370945,
+                           "sha256":  "2540b01a6a90405dd5cf509af922cd339513200f038f2147642b4d90def32d16"
+                       },
     "warnings":  [
-                     "missingAmharicCaptions",
-                     "missingSignLanguage",
+                     "amharicDraftNotReviewed",
+                     "ethslDemoNotReviewed",
                      "missingAudioDescription"
                  ]
 }

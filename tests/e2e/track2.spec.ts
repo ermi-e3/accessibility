@@ -88,6 +88,38 @@ test('Savanna concept loads the captioned sample and emits completion', async ({
   await expect(player.locator('[data-caption-select]')).toHaveValue('en');
   await player.locator('[data-transcript-button]').click();
   await expect(player.locator('[data-segments] > li')).toHaveCount(4);
+  await player.locator('[data-caption-select]').selectOption('am');
+  await expect(player.locator('[data-transcript-language]')).toHaveValue('am');
+  await expect(player.locator('[data-segments] > li').first()).toContainText(/[\u1200-\u137f]/u);
+  await player.locator('[data-transcript-search]').fill('ትምህርት');
+  await expect(player.locator('[data-caption-select]')).toHaveValue('am');
+  await player.locator('[data-transcript-search]').fill('');
+
+  await player.locator('[data-sign-button]').click();
+  const signWindow = player.locator('[data-sign-window]');
+  await expect(signWindow).toBeVisible();
+  await expect(player.locator('[data-sign-label]')).toContainText('educator recording required');
+  const initialBox = await signWindow.boundingBox();
+  await signWindow.focus();
+  await signWindow.press('ArrowLeft');
+  const movedBox = await signWindow.boundingBox();
+  expect(movedBox!.x).toBeLessThan(initialBox!.x);
+  await signWindow.press('Control+ArrowRight');
+  const resizedBox = await signWindow.boundingBox();
+  expect(resizedBox!.width).toBeGreaterThanOrEqual(movedBox!.width);
+  await player.locator('[data-sign-minimize]').click();
+  await expect(signWindow).toHaveAttribute('data-minimized', 'true');
+  await player.locator('[data-sign-minimize]').click();
+  await player.locator('[data-sign-maximize]').click();
+  await expect(signWindow).toHaveAttribute('data-maximized', 'true');
+  await player.locator('[data-sign-maximize]').click();
+  await player.locator('[data-sign-close]').press('Enter');
+  await expect(signWindow).toBeHidden();
+
+  const downloadPromise = page.waitForEvent('download');
+  await player.locator('[data-offline-download]').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toContain('complete-demo.zip');
   const video = player.locator('video[data-media]');
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.duration)).toBeGreaterThan(20);
   await video.evaluate(async (element: HTMLVideoElement) => {
@@ -114,4 +146,9 @@ test('sample manifest and video support static same-origin delivery', async ({ r
   expect(video.headers()['content-type']).toBe('video/webm');
   expect(video.headers()['content-range']).toMatch(/^bytes 0-1023\//);
   expect((await video.body()).byteLength).toBe(1024);
+
+  const offline = await request.get('/assets/offline/accesslearn-demo/accesslearn-demo-complete.zip');
+  expect(offline.ok()).toBe(true);
+  expect(offline.headers()['content-type']).toBe('application/zip');
+  expect((await offline.body()).byteLength).toBeGreaterThan(300_000);
 });

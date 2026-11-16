@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -99,19 +100,55 @@ describe('Track 2 integration contracts', () => {
       'accesslearn-demo',
       'sample-transcript.en.json',
     )) as Record<string, any>;
+    const amharic = JSON.parse(read(
+      fixtureRoot,
+      'assets',
+      'media',
+      'accesslearn-demo',
+      'sample-transcript.am.draft.json',
+    )) as Record<string, any>;
     expect(manifest).toMatchObject({
       schemaVersion: '1.0',
       lessonId: 'demo-accessible-careers',
       media: { contentType: 'video/webm', durationMilliseconds: expect.any(Number) },
-      captions: [expect.objectContaining({ language: 'en', isHumanReviewed: true })],
     });
+    expect(manifest.captions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ language: 'en', isHumanReviewed: true }),
+    ]));
     expect((reviewed.match(/ --> /g) || [])).toHaveLength(4);
     expect(transcript.segments).toHaveLength(4);
+    expect(amharic.isHumanReviewed).toBe(false);
+    expect(amharic.segments).toHaveLength(4);
+    expect(amharic.segments.every((segment: Record<string, unknown>) => /[\u1200-\u137f]/u.test(String(segment.text)))).toBe(true);
+    expect(amharic.segments.map((segment: Record<string, unknown>) => [segment.startMilliseconds, segment.endMilliseconds]))
+      .toEqual(transcript.segments.map((segment: Record<string, unknown>) => [segment.startMilliseconds, segment.endMilliseconds]));
+    expect(manifest.captions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ language: 'am', isHumanReviewed: false, reviewStatus: 'draft' }),
+    ]));
+    expect(manifest.transcripts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ language: 'am', isHumanReviewed: false, reviewStatus: 'draft' }),
+    ]));
+    expect(manifest.signLanguage).toMatchObject({
+      language: 'eth',
+      isHumanReviewed: false,
+      reviewStatus: 'control-demo',
+      demoOnly: true,
+    });
+    expect(manifest.warnings).not.toEqual(expect.arrayContaining(['missingAmharicCaptions', 'missingSignLanguage']));
     expect(draft).toContain('Machine-generated offline draft');
     expect(draft).toContain('inaccessible video player');
     expect(reviewed).toContain('an accessible video player');
     expect(statSync(join(fixtureRoot, 'assets', 'media', 'accesslearn-demo', 'sample-lesson.webm')).size).toBeGreaterThan(100_000);
     expect(statSync(join(fixtureRoot, 'assets', 'js', 'accesslearn-player.min.js')).size).toBeLessThan(100 * 1024);
+    const packagePath = join(fixtureRoot, 'assets', 'offline', 'accesslearn-demo', 'accesslearn-demo-complete.zip');
+    const packageBytes = readFileSync(packagePath);
+    expect(packageBytes.subarray(0, 2).toString('ascii')).toBe('PK');
+    expect(packageBytes.byteLength).toBe(manifest.offlinePackage.byteLength);
+    expect(createHash('sha256').update(packageBytes).digest('hex')).toBe(manifest.offlinePackage.sha256);
+    const archiveDirectory = packageBytes.toString('latin1').replaceAll('\\', '/');
+    for (const entry of ['index.html', 'README.txt', 'manifest.json', 'media/sample-lesson.webm']) {
+      expect(archiveDirectory).toContain(entry);
+    }
     expect(read(fixtureRoot, 'pages', 'concept-with-navigation.html')).toContain('data-lesson-id="demo-accessible-careers"');
   });
 
@@ -123,5 +160,7 @@ describe('Track 2 integration contracts', () => {
     expect(showcase).toContain('pages/certificate.html?id=ALX-VA1-AMARA-2026');
     expect(showcase).toContain('sample-captions.draft.vtt');
     expect(showcase).toContain('sample-captions.en.vtt');
+    expect(showcase).toContain('sample-captions.am.draft.vtt');
+    expect(showcase).toContain('accesslearn-demo-complete.zip');
   });
 });

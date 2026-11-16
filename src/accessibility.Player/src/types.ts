@@ -11,6 +11,7 @@ export interface PlayerManifest {
   transcripts: TranscriptLink[];
   signLanguage: SignLanguageTrack | null;
   audioDescription: AudioDescriptionTrack | null;
+  offlinePackage?: OfflinePackageLink | null;
   warnings: string[];
 }
 
@@ -34,12 +35,28 @@ export interface TranscriptLink {
   label: string;
   url: string;
   isHumanReviewed: boolean;
+  reviewStatus?: string;
+  demoOnly?: boolean;
 }
 
 export interface SignLanguageTrack {
   language: string;
+  label?: string;
   url: string;
   syncOffsetMilliseconds: number;
+  isHumanReviewed?: boolean;
+  creationMethod?: "human-recorded";
+  reviewStatus?: string;
+  demoOnly?: boolean;
+}
+
+export interface OfflinePackageLink {
+  profile: string;
+  label: string;
+  url: string;
+  contentType: "application/zip";
+  byteLength: number;
+  sha256: string;
 }
 
 export interface AudioDescriptionTrack {
@@ -53,6 +70,7 @@ export interface TranscriptResponse {
   publicationId: string;
   language: string;
   revision: number;
+  isHumanReviewed?: boolean;
   segments: TranscriptSegment[];
 }
 
@@ -77,8 +95,11 @@ export interface PlayerState {
   currentTime: number;
   duration: number;
   captionLanguage: string | null;
+  transcriptLanguage: string | null;
   transcriptOpen: boolean;
   signLanguageEnabled: boolean;
+  signWindowMinimized: boolean;
+  signWindowMaximized: boolean;
   audioDescriptionEnabled: boolean;
 }
 
@@ -102,6 +123,7 @@ export interface AccessLearnPlayerElement extends HTMLElement {
   pause(): void;
   seekTo(seconds: number): void;
   setCaptionLanguage(language: string | null): void;
+  setTranscriptLanguage(language: string): Promise<void>;
   setTranscriptOpen(open: boolean): Promise<void>;
   setSignLanguage(enabled: boolean): Promise<void>;
   setAudioDescription(enabled: boolean, muted?: boolean): Promise<void>;

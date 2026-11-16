@@ -15,6 +15,7 @@ const types = new Map([
   ['.vtt', 'text/vtt; charset=utf-8'],
   ['.wav', 'audio/wav'],
   ['.webm', 'video/webm'],
+  ['.zip', 'application/zip'],
   ['.ttf', 'font/ttf'],
   ['.woff', 'font/woff'],
   ['.woff2', 'font/woff2'],

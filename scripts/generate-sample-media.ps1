@@ -4,8 +4,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $lessonPath = Join-Path $ProjectRoot 'sample-content\sample-lesson.json'
-$lesson = Get-Content -LiteralPath $lessonPath -Raw | ConvertFrom-Json
+$lesson = Get-Content -LiteralPath $lessonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$amharicPath = Join-Path $ProjectRoot 'sample-content\sample-lesson.am.draft.json'
+$amharic = Get-Content -LiteralPath $amharicPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $mediaDirectory = Join-Path $ProjectRoot 'Savanna-static-pages\assets\media\accesslearn-demo'
+$offlineDirectory = Join-Path $ProjectRoot 'Savanna-static-pages\assets\offline\accesslearn-demo'
 $manifestDirectory = Join-Path $ProjectRoot ("Savanna-static-pages\api\v1\public\lessons\{0}" -f $lesson.lessonId)
 $temporaryDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("accesslearn-sample-{0}" -f [guid]::NewGuid().ToString('N'))
 
@@ -82,7 +85,7 @@ function Write-PcmWave([string]$path, $format, [byte[]]$data) {
 }
 
 try {
-    foreach ($directory in @($mediaDirectory, $manifestDirectory, $temporaryDirectory)) {
+    foreach ($directory in @($mediaDirectory, $offlineDirectory, $manifestDirectory, $temporaryDirectory)) {
         if (-not (Test-Path -LiteralPath $directory)) { New-Item -ItemType Directory -Path $directory | Out-Null }
     }
 
@@ -162,6 +165,50 @@ try {
         (New-Object System.Text.UTF8Encoding($false))
     )
 
+    if ($amharic.segments.Count -ne $segments.Count) { throw 'Amharic draft must match the English segment count.' }
+    $amharicSegments = New-Object System.Collections.Generic.List[object]
+    $amharicVtt = New-Object System.Collections.Generic.List[string]
+    $amharicVtt.Add('WEBVTT')
+    $amharicVtt.Add('')
+    $amharicVtt.Add('NOTE Unreviewed Amharic draft for demonstration. Fluent review is required before publication.')
+    $amharicVtt.Add('')
+    for ($index = 0; $index -lt $segments.Count; $index++) {
+        $text = [string]$amharic.segments[$index]
+        if ([string]::IsNullOrWhiteSpace($text) -or $text -notmatch '[\u1200-\u137F]') {
+            throw "Amharic segment $index does not contain Ethiopic text."
+        }
+        $source = $segments[$index]
+        $amharicSegments.Add([pscustomobject]@{
+            sequence = $source.sequence
+            startMilliseconds = $source.startMilliseconds
+            endMilliseconds = $source.endMilliseconds
+            text = $text
+            speakerLabel = 'Narrator'
+        })
+        $amharicVtt.Add(($index + 1).ToString())
+        $amharicVtt.Add(("{0} --> {1}" -f (Format-VttTimestamp $source.startMilliseconds), (Format-VttTimestamp $source.endMilliseconds)))
+        $amharicVtt.Add($text)
+        $amharicVtt.Add('')
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $mediaDirectory 'sample-captions.am.draft.vtt'),
+        ($amharicVtt -join "`n"),
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+    $amharicTranscript = [ordered]@{
+        lessonId = [string]$lesson.lessonId
+        publicationId = [string]$lesson.publicationId
+        language = 'am'
+        revision = 1
+        isHumanReviewed = $false
+        segments = $amharicSegments.ToArray()
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $mediaDirectory 'sample-transcript.am.draft.json'),
+        ($amharicTranscript | ConvertTo-Json -Depth 10),
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+
     $escapedTitle = [System.Security.SecurityElement]::Escape([string]$lesson.title)
     $poster = @"
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title description">
@@ -198,6 +245,50 @@ try {
 
     & (Join-Path $PSScriptRoot 'extract-captions.ps1') -InputVideo $videoPath -OutputVtt (Join-Path $mediaDirectory 'sample-captions.draft.vtt')
 
+    $offlineBuild = Join-Path $temporaryDirectory 'offline-package'
+    $offlineMedia = Join-Path $offlineBuild 'media'
+    New-Item -ItemType Directory -Path $offlineMedia -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $ProjectRoot 'sample-content\offline-index.html') -Destination (Join-Path $offlineBuild 'index.html')
+    foreach ($fileName in @(
+        'sample-lesson.webm',
+        'sample-poster.svg',
+        'sample-captions.en.vtt',
+        'sample-captions.am.draft.vtt',
+        'sample-transcript.en.json',
+        'sample-transcript.am.draft.json'
+    )) {
+        Copy-Item -LiteralPath (Join-Path $mediaDirectory $fileName) -Destination (Join-Path $offlineMedia $fileName)
+    }
+    $offlineReadme = @"
+AccessLearn Ethiopia portable sample
+
+Open index.html in a modern browser. The package includes local media, English captions,
+an unreviewed Amharic draft, and transcript JSON. The EthSL window control demo is not
+a sign-language interpretation recording. Educators must upload a rights-cleared,
+human-recorded and reviewed EthSL video before production publication.
+"@
+    [System.IO.File]::WriteAllText((Join-Path $offlineBuild 'README.txt'), $offlineReadme, (New-Object System.Text.UTF8Encoding($false)))
+    $offlineManifest = [ordered]@{
+        schemaVersion = '1.0'
+        lessonId = [string]$lesson.lessonId
+        title = [string]$lesson.title
+        generatedAt = [DateTimeOffset]::UtcNow.ToString('O')
+        languages = @('en', 'am')
+        amharicReviewStatus = 'draft'
+        signLanguageIncluded = $false
+        entryPoint = 'index.html'
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $offlineBuild 'manifest.json'),
+        ($offlineManifest | ConvertTo-Json -Depth 10),
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+    $offlineZip = Join-Path $offlineDirectory 'accesslearn-demo-complete.zip'
+    if (Test-Path -LiteralPath $offlineZip) { Remove-Item -LiteralPath $offlineZip -Force }
+    Compress-Archive -Path (Join-Path $offlineBuild '*') -DestinationPath $offlineZip -CompressionLevel Optimal
+    $offlineZipInfo = Get-Item -LiteralPath $offlineZip
+    $offlineSha256 = (Get-FileHash -LiteralPath $offlineZip -Algorithm SHA256).Hash.ToLowerInvariant()
+
     $manifest = [ordered]@{
         schemaVersion = '1.0'
         lessonId = [string]$lesson.lessonId
@@ -218,16 +309,47 @@ try {
             url = '/assets/media/accesslearn-demo/sample-captions.en.vtt'
             isDefault = $true
             isHumanReviewed = $true
+        }, [ordered]@{
+            language = 'am'
+            label = 'Amharic draft demo - not reviewed'
+            url = '/assets/media/accesslearn-demo/sample-captions.am.draft.vtt'
+            isDefault = $false
+            isHumanReviewed = $false
+            reviewStatus = 'draft'
+            demoOnly = $true
         })
         transcripts = @([ordered]@{
             language = 'en'
             label = 'English transcript'
             url = '/assets/media/accesslearn-demo/sample-transcript.en.json'
             isHumanReviewed = $true
+        }, [ordered]@{
+            language = 'am'
+            label = 'Amharic draft transcript - not reviewed'
+            url = '/assets/media/accesslearn-demo/sample-transcript.am.draft.json'
+            isHumanReviewed = $false
+            reviewStatus = 'draft'
+            demoOnly = $true
         })
-        signLanguage = $null
+        signLanguage = [ordered]@{
+            language = 'eth'
+            label = 'EthSL window control demo - educator recording required'
+            url = '/assets/media/accesslearn-demo/sample-lesson.webm'
+            syncOffsetMilliseconds = 0
+            isHumanReviewed = $false
+            reviewStatus = 'control-demo'
+            demoOnly = $true
+        }
         audioDescription = $null
-        warnings = @('missingAmharicCaptions', 'missingSignLanguage', 'missingAudioDescription')
+        offlinePackage = [ordered]@{
+            profile = 'complete-demo'
+            label = 'Portable lesson package'
+            url = '/assets/offline/accesslearn-demo/accesslearn-demo-complete.zip'
+            contentType = 'application/zip'
+            byteLength = [long]$offlineZipInfo.Length
+            sha256 = $offlineSha256
+        }
+        warnings = @('amharicDraftNotReviewed', 'ethslDemoNotReviewed', 'missingAudioDescription')
     }
     [System.IO.File]::WriteAllText(
         (Join-Path $manifestDirectory 'manifest'),

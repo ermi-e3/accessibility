@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AccessLearn Offline Sample</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { width: min(64rem, 100%); margin: 0 auto; padding: 1rem; color: #102f3b; background: #fffdf7; font-family: system-ui, sans-serif; line-height: 1.6; }
+      video { width: 100%; border: 2px solid #102f3b; border-radius: .5rem; background: #000; }
+      .notice { padding: 1rem; border-left: .4rem solid #f4c95d; background: #fff5d6; }
+      .transcript { display: grid; gap: .75rem; padding: 0; list-style: none; }
+      .transcript li { padding: .75rem; border: 1px solid #9fb0b5; border-radius: .4rem; background: #fff; }
+      a { color: #07506f; }
+      :focus-visible { outline: 3px solid #005fcc; outline-offset: 3px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><strong>AccessLearn Ethiopia offline package</strong></p>
+      <h1>From Accessible Learning to Career Opportunity</h1>
+      <p class="notice">
+        This portable sample includes English captions, an unreviewed Amharic draft, and transcript files.
+        Have a fluent reviewer approve translated content before production use.
+      </p>
+      <video controls preload="metadata" poster="media/sample-poster.svg">
+        <source src="media/sample-lesson.webm" type="video/webm" />
+        <track default kind="captions" srclang="en" label="English" src="media/sample-captions.en.vtt" />
+        <track kind="captions" srclang="am" label="Amharic draft" src="media/sample-captions.am.draft.vtt" />
+        Download <a href="media/sample-lesson.webm">the lesson video</a>.
+      </video>
+      <h2>English transcript</h2>
+      <ol class="transcript">
+        <li><strong>00:00</strong> Welcome to AccessLearn Ethiopia.</li>
+        <li><strong>00:03</strong> This sample lesson shows how an accessible video player connects learning to career opportunities.</li>
+        <li><strong>00:11</strong> Turn on captions, open the transcript, and use the keyboard controls to follow the lesson.</li>
+        <li><strong>00:18</strong> When the video ends, explore the Career Gateway and share your verified learning certificate.</li>
+      </ol>
+      <p>
+        Source files: <a href="media/sample-transcript.en.json">English JSON</a> and
+        <a href="media/sample-transcript.am.draft.json" lang="am">የአማርኛ ረቂቅ JSON</a>.
+      </p>
+    </main>
+  </body>
+</html>
