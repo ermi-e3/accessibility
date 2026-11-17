@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -11,6 +12,7 @@ using Accessibility.Domain.Enums;
 using Accessibility.Foundation.Tests.Infrastructure;
 using Accessibility.Infrastructure.Identity;
 using Accessibility.Infrastructure.Persistence;
+using Accessibility.Infrastructure.Processing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -256,7 +258,9 @@ public sealed class LessonApiTests
                 AccessLearnScopes.LessonsRead,
                 AccessLearnScopes.LessonsWrite,
                 AccessLearnScopes.ResourcesWrite,
-                AccessLearnScopes.LessonsPublish
+                AccessLearnScopes.LessonsPublish,
+                AccessLearnScopes.DocumentsRead,
+                AccessLearnScopes.DocumentsWrite
             ]);
         using var client = factory.CreateSecureClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
@@ -293,6 +297,33 @@ public sealed class LessonApiTests
             $"/api/v1/transcripts/{transcriptId}/approve");
         approveRequest.Headers.TryAddWithoutValidation("If-Match", $"\"{transcriptVersion}\"");
         Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(approveRequest)).StatusCode);
+
+        using var documentContent = Multipart(
+            "publication.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            CreateMinimalDocx());
+        var documentUpload = await client.PostAsync(
+            $"/api/v1/lessons/{lessonId}/documents?title=Publication%20document&language=en",
+            documentContent);
+        Assert.Equal(HttpStatusCode.Accepted, documentUpload.StatusCode);
+        var documentUploadModel = await documentUpload.Content.ReadFromJsonAsync<JsonElement>();
+        var documentId = documentUploadModel.GetProperty("document").GetProperty("id").GetGuid();
+        var normalizeJobId = documentUploadModel.GetProperty("job").GetProperty("id").GetGuid();
+        await ExecuteJobAsync(factory.Services, normalizeJobId);
+        var documentDetail = await client.GetAsync($"/api/v1/documents/{documentId}");
+        using var generateDocument = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/documents/{documentId}/outputs")
+        {
+            Content = JsonContent.Create(new { formats = new[] { "html" } })
+        };
+        generateDocument.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        generateDocument.Headers.IfMatch.Add(documentDetail.Headers.ETag!);
+        var generation = await client.SendAsync(generateDocument);
+        Assert.Equal(HttpStatusCode.Accepted, generation.StatusCode);
+        var generateJobId = (await generation.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        await ExecuteJobAsync(factory.Services, generateJobId);
+        var outputs = await client.GetFromJsonAsync<JsonElement[]>($"/api/v1/documents/{documentId}/outputs");
+        var documentOutputId = Assert.Single(outputs!).GetProperty("id").GetGuid();
+
         var lessonDetail = await client.GetFromJsonAsync<JsonElement>($"/api/v1/lessons/{lessonId}");
         var lessonVersion = lessonDetail.GetProperty("lesson").GetProperty("version").GetInt64();
         using var publishRequest = new HttpRequestMessage(
@@ -310,6 +341,25 @@ public sealed class LessonApiTests
         Assert.Equal(lessonId, manifest.GetProperty("lessonId").GetGuid());
         Assert.Single(manifest.GetProperty("captions").EnumerateArray());
         Assert.Single(manifest.GetProperty("transcripts").EnumerateArray());
+        Assert.Equal("1.2", manifest.GetProperty("schemaVersion").GetString());
+        var publicDocument = Assert.Single(manifest.GetProperty("documents").EnumerateArray());
+        Assert.Equal(documentOutputId, publicDocument.GetProperty("outputId").GetGuid());
+        Assert.Equal("semanticHtmlChecksPassed", publicDocument.GetProperty("label").GetString());
+        var publicDocumentResponse = await publicClient.GetAsync($"/api/v1/public/documents/{documentOutputId}");
+        Assert.Equal(HttpStatusCode.OK, publicDocumentResponse.StatusCode);
+        await using (var staleScope = factory.Services.CreateAsyncScope())
+        {
+            var staleDatabase = staleScope.ServiceProvider.GetRequiredService<AccessLearnDbContext>();
+            var workingOutput = await staleDatabase.DocumentOutputs.SingleAsync(output => output.Id == documentOutputId);
+            workingOutput.MarkStale();
+            await staleDatabase.SaveChangesAsync();
+        }
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await publicClient.GetAsync($"/api/v1/public/lessons/{lessonId}/manifest")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await publicClient.GetAsync($"/api/v1/public/documents/{documentOutputId}")).StatusCode);
         var transcript = await publicClient.GetFromJsonAsync<JsonElement>(
             $"/api/v1/public/lessons/{lessonId}/publications/{publicationId}/transcripts/en");
         Assert.Equal("Accessible lesson transcript", transcript.GetProperty("segments")[0].GetProperty("text").GetString());
@@ -367,6 +417,141 @@ public sealed class LessonApiTests
         Assert.Equal(1, factory.ProcessingScheduler.DeleteCount);
     }
 
+    [DatabaseIntegrationFact]
+    public async Task DocumentUploadQueuesNormalizationAndPreservesOwnershipAndReviewGate()
+    {
+        using var factory = new LessonApiFactory();
+        var owner = await SeedEducatorAsync(factory.Services);
+        var other = await SeedEducatorAsync(factory.Services);
+        var credential = await SeedClientAsync(factory.Services, owner.Id,
+        [
+            AccessLearnScopes.LessonsWrite,
+            AccessLearnScopes.DocumentsWrite,
+            AccessLearnScopes.DocumentsRead
+        ]);
+        using var client = factory.CreateSecureClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        var lesson = await client.PostAsJsonAsync("/api/v1/lessons", LessonRequest());
+        Assert.Equal(HttpStatusCode.Created, lesson.StatusCode);
+        var lessonId = (await lesson.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        using var multipart = Multipart(
+            "structured.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ReadStructuredDocxFixture());
+        multipart.Add(new StringContent("Structured lesson"), "title");
+        multipart.Add(new StringContent("en"), "language");
+        var upload = await client.PostAsync(
+            $"/api/v1/lessons/{lessonId}/documents",
+            multipart);
+
+        Assert.Equal(HttpStatusCode.Accepted, upload.StatusCode);
+        var body = await upload.Content.ReadFromJsonAsync<JsonElement>();
+        var document = body.GetProperty("document");
+        var documentId = document.GetProperty("id").GetGuid();
+        var normalizationJobId = body.GetProperty("job").GetProperty("id").GetGuid();
+        Assert.Equal("normalizing", document.GetProperty("status").GetString());
+        Assert.Equal("normalizeDocument", body.GetProperty("job").GetProperty("type").GetString());
+        Assert.Equal(1, factory.ProcessingScheduler.EnqueueCount);
+
+        var detail = await client.GetAsync($"/api/v1/documents/{documentId}");
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+        Assert.NotNull(detail.Headers.ETag);
+
+        using var premature = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/documents/{documentId}/outputs")
+        {
+            Content = JsonContent.Create(new { formats = new[] { "html" } })
+        };
+        premature.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        premature.Headers.IfMatch.Add(detail.Headers.ETag!);
+        var prematureResponse = await client.SendAsync(premature);
+        Assert.Equal(HttpStatusCode.Conflict, prematureResponse.StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<ProcessingJobRunner>()
+                .ExecuteAsync(normalizationJobId);
+        }
+        detail = await client.GetAsync($"/api/v1/documents/{documentId}");
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+        var normalized = await detail.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("needsReview", normalized.GetProperty("status").GetString());
+        var image = Assert.Single(normalized.GetProperty("images").EnumerateArray());
+        var imageId = image.GetProperty("id").GetGuid();
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.GetAsync($"/api/v1/documents/{documentId}/normalized-model")).StatusCode);
+        var previewBeforeReview = await client.GetStringAsync($"/api/v1/documents/{documentId}/preview");
+        Assert.Contains("IMAGE_REVIEW_REQUIRED", previewBeforeReview, StringComparison.Ordinal);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.GetAsync($"/api/v1/documents/{documentId}/images/{imageId}/content")).StatusCode);
+        using var review = new HttpRequestMessage(
+            HttpMethod.Patch,
+            $"/api/v1/documents/{documentId}/images/{imageId}")
+        {
+            Content = JsonContent.Create(new
+            {
+                altText = "A reviewed accessibility fixture image.",
+                isDecorative = false
+            })
+        };
+        review.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        review.Headers.IfMatch.Add(detail.Headers.ETag!);
+        var reviewed = await client.SendAsync(review);
+        Assert.Equal(HttpStatusCode.OK, reviewed.StatusCode);
+        Assert.Equal("ready", (await reviewed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
+        detail = await client.GetAsync($"/api/v1/documents/{documentId}");
+        var previewAfterReview = await client.GetStringAsync($"/api/v1/documents/{documentId}/preview");
+        Assert.DoesNotContain("IMAGE_REVIEW_REQUIRED", previewAfterReview, StringComparison.Ordinal);
+
+        using var generate = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/documents/{documentId}/outputs")
+        {
+            Content = JsonContent.Create(new { formats = new[] { "html" } })
+        };
+        generate.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        generate.Headers.IfMatch.Add(detail.Headers.ETag!);
+        generate.Headers.Add("Idempotency-Key", $"document-output-{documentId:N}");
+        var generation = await client.SendAsync(generate);
+        Assert.Equal(HttpStatusCode.Accepted, generation.StatusCode);
+        var outputJobId = (await generation.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        using var replay = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/documents/{documentId}/outputs")
+        {
+            Content = JsonContent.Create(new { formats = new[] { "html" } })
+        };
+        replay.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+        replay.Headers.IfMatch.Add(detail.Headers.ETag!);
+        replay.Headers.Add("Idempotency-Key", $"document-output-{documentId:N}");
+        var replayResponse = await client.SendAsync(replay);
+        Assert.Equal(HttpStatusCode.Accepted, replayResponse.StatusCode);
+        Assert.Equal(
+            outputJobId,
+            (await replayResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid());
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<ProcessingJobRunner>()
+                .ExecuteAsync(outputJobId);
+        }
+
+        var outputs = await client.GetFromJsonAsync<JsonElement[]>($"/api/v1/documents/{documentId}/outputs");
+        var html = Assert.Single(outputs!);
+        Assert.Equal("html", html.GetProperty("kind").GetString());
+        Assert.Equal("validated", html.GetProperty("status").GetString());
+        Assert.Equal("semanticHtmlChecksPassed", html.GetProperty("label").GetString());
+        var outputId = html.GetProperty("id").GetGuid();
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.GetAsync($"/api/v1/documents/{documentId}/outputs/{outputId}/download")).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.GetAsync($"/api/v1/documents/{documentId}/outputs/{outputId}/validation")).StatusCode);
+
+        var otherCredential = await SeedClientAsync(factory.Services, other.Id, [AccessLearnScopes.DocumentsRead]);
+        using var otherClient = factory.CreateSecureClient();
+        otherClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", otherCredential);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/v1/documents/{documentId}")).StatusCode);
+    }
+
     private static object LessonRequest() => new
     {
         title = $"Lesson {Guid.NewGuid():N}",
@@ -395,6 +580,50 @@ public sealed class LessonApiTests
         ];
     }
 
+    private static byte[] CreateMinimalDocx()
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteZipEntry(archive, "[Content_Types].xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+                  <Default Extension="xml" ContentType="application/xml" />
+                  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml" />
+                </Types>
+                """);
+            WriteZipEntry(archive, "_rels/.rels", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml" />
+                </Relationships>
+                """);
+            WriteZipEntry(archive, "word/document.xml", """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Accessible lesson document</w:t></w:r></w:p></w:body></w:document>
+                """);
+        }
+        return stream.ToArray();
+    }
+
+    private static byte[] ReadStructuredDocxFixture()
+    {
+        var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
+        return File.ReadAllBytes(Path.Combine(
+            repositoryRoot,
+            "sample-content",
+            "documents",
+            "structured-en-am.docx"));
+    }
+
+    private static void WriteZipEntry(ZipArchive archive, string name, string value)
+    {
+        var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
+        using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+        writer.Write(value);
+    }
+
     private static async Task<Guid> CreateLessonWithCookieAsync(HttpClient client)
     {
         var token = await GetAntiforgeryAsync(client);
@@ -407,6 +636,12 @@ public sealed class LessonApiTests
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync()))
             .RootElement.GetProperty("id").GetGuid();
+    }
+
+    private static async Task ExecuteJobAsync(IServiceProvider services, Guid jobId)
+    {
+        await using var scope = services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<ProcessingJobRunner>().ExecuteAsync(jobId);
     }
 
     private static async Task LoginAsync(HttpClient client, string email, string password)

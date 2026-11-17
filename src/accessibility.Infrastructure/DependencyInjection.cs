@@ -4,6 +4,7 @@ using Accessibility.Application.Features.Lessons;
 using Accessibility.Application.Features.Player;
 using Accessibility.Application.Features.Processing;
 using Accessibility.Application.Features.Offline;
+using Accessibility.Application.Features.Documents;
 using Accessibility.Infrastructure.Authorization;
 using Accessibility.Infrastructure.Health;
 using Accessibility.Infrastructure.Identity;
@@ -11,6 +12,7 @@ using Accessibility.Infrastructure.Persistence;
 using Accessibility.Infrastructure.Processing;
 using Accessibility.Infrastructure.Player;
 using Accessibility.Infrastructure.Offline;
+using Accessibility.Infrastructure.Documents;
 using Accessibility.Infrastructure.Storage;
 using Amazon.Runtime;
 using Amazon.S3;
@@ -155,6 +157,18 @@ public static class DependencyInjection
                 policy.RequireAuthenticatedUser();
                 policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.ResourcesRead));
             })
+            .AddPolicy(AccessLearnPolicies.DocumentsWrite, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.DocumentsWrite));
+            })
+            .AddPolicy(AccessLearnPolicies.DocumentsRead, policy =>
+            {
+                policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
+                policy.RequireAuthenticatedUser();
+                policy.AddRequirements(new ScopeOrRoleRequirement(AccessLearnScopes.DocumentsRead));
+            })
             .AddPolicy(AccessLearnPolicies.ProcessingRead, policy =>
             {
                 policy.AddAuthenticationSchemes(AccessLearnAuthenticationSchemes.Management);
@@ -246,6 +260,14 @@ public static class DependencyInjection
         services.AddSingleton<ITranscriptionProvider, WhisperCppTranscriptionProvider>();
         services.AddSingleton<ITranslationProvider, GoogleCloudTranslationProvider>();
         services.AddSingleton<ITranscriptFormatService, TranscriptFormatService>();
+        services.AddSingleton<IDocxPackageSafetyValidator, DocxPackageSafetyValidator>();
+        services.AddSingleton<IOpenXmlDocumentNormalizer, OpenXmlDocumentNormalizer>();
+        services.AddSingleton<ISemanticHtmlDocumentRenderer, SemanticHtmlDocumentRenderer>();
+        services.AddOptions<DocumentProcessingOptions>()
+            .Bind(configuration.GetSection(DocumentProcessingOptions.SectionName));
+        services.AddSingleton<IDocumentPdfToolchain, DocumentPdfToolchain>();
+        services.AddScoped<IDocumentService, DocumentService>();
+        services.AddScoped<IDocumentJobExecutor, DocumentJobExecutor>();
         services.AddScoped<IBackgroundJobScheduler, HangfireProcessingJobScheduler>();
         services.AddScoped<IProcessingService, ProcessingService>();
         services.AddScoped<ProcessingJobRunner>();

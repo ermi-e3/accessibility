@@ -106,6 +106,10 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .settings-grid label { display: grid; gap: 0.3rem; }
 .dialog-actions { display: flex; justify-content: flex-end; margin-top: 1rem; }
 .warnings { margin: 0; padding: 0.5rem 2rem; background: #fff2b8; }
+.documents { border-top: 1px solid var(--al-border); padding: 0.8rem; }
+.documents h3 { margin: 0 0 0.5rem; font-size: 1.15rem; }
+.documents ul { margin: 0; padding-inline-start: 1.4rem; }
+.documents a { color: var(--al-focus); font-weight: 700; overflow-wrap: anywhere; }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 @media (min-width: 62rem) {
   .layout.has-transcript { grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr); }

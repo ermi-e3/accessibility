@@ -59,6 +59,7 @@ public sealed class AccessLearnDbContext : IdentityDbContext<ApplicationUser, Id
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         MarkChangedTranscriptParents();
+        MarkChangedDocumentParents();
         ApplyAuditValues();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
@@ -68,6 +69,7 @@ public sealed class AccessLearnDbContext : IdentityDbContext<ApplicationUser, Id
         CancellationToken cancellationToken = default)
     {
         await MarkChangedTranscriptParentsAsync(cancellationToken);
+        await MarkChangedDocumentParentsAsync(cancellationToken);
         ApplyAuditValues();
         return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
@@ -109,6 +111,45 @@ public sealed class AccessLearnDbContext : IdentityDbContext<ApplicationUser, Id
         if (entry.State == EntityState.Unchanged)
         {
             entry.Property(transcript => transcript.UpdatedAt).IsModified = true;
+        }
+    }
+
+    private void MarkChangedDocumentParents()
+    {
+        foreach (var documentId in ChangedDocumentIds())
+        {
+            var documentEntry = ChangeTracker.Entries<AccessibleDocument>()
+                .SingleOrDefault(entry => entry.Entity.Id == documentId);
+            documentEntry ??= Entry(Documents.Single(document => document.Id == documentId));
+            MarkDocumentModified(documentEntry);
+        }
+    }
+
+    private async Task MarkChangedDocumentParentsAsync(CancellationToken cancellationToken)
+    {
+        foreach (var documentId in ChangedDocumentIds())
+        {
+            var documentEntry = ChangeTracker.Entries<AccessibleDocument>()
+                .SingleOrDefault(entry => entry.Entity.Id == documentId);
+            documentEntry ??= Entry(await Documents.SingleAsync(
+                document => document.Id == documentId,
+                cancellationToken));
+            MarkDocumentModified(documentEntry);
+        }
+    }
+
+    private HashSet<Guid> ChangedDocumentIds() =>
+        ChangeTracker.Entries<DocumentImage>()
+            .Where(entry => entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .Select(entry => entry.Entity.DocumentId)
+            .ToHashSet();
+
+    private static void MarkDocumentModified(
+        Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<AccessibleDocument> entry)
+    {
+        if (entry.State == EntityState.Unchanged)
+        {
+            entry.Property(document => document.UpdatedAt).IsModified = true;
         }
     }
 

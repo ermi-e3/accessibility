@@ -88,7 +88,8 @@ public sealed class OfflinePackageJobRunner(
 
             var pinnedBytes = offlineAudio.ByteLength +
                               snapshot.Captions.Sum(caption => caption.ByteLength) +
-                              (snapshot.Documents ?? []).Sum(document => document.ByteLength) +
+                              (snapshot.Documents ?? []).Where(document => document.Kind == DocumentOutputKind.Html)
+                                  .Sum(document => document.ByteLength) +
                               snapshot.Captions.Sum(caption => caption.Segments.Sum(segment =>
                                   Encoding.UTF8.GetByteCount(segment.Text) +
                                   Encoding.UTF8.GetByteCount(segment.SpeakerLabel ?? string.Empty) + 4)) +
@@ -140,6 +141,7 @@ public sealed class OfflinePackageJobRunner(
             }
 
             var documents = (snapshot.Documents ?? [])
+                .Where(document => document.Kind == DocumentOutputKind.Html)
                 .OrderBy(document => document.Title, StringComparer.Ordinal)
                 .ThenBy(document => document.DocumentId)
                 .ToArray();
@@ -452,8 +454,23 @@ public sealed class OfflinePackageJobRunner(
         {
             throw new FileContentInvalidException("Validated document HTML does not contain a head element.");
         }
-        const string csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; base-uri 'none'; form-action 'none'\">";
-        html = html.Insert(head.Index + head.Length, csp);
+        var existingCsp = Regex.Match(
+            html,
+            "<meta\\s+[^>]*http-equiv=[\"']Content-Security-Policy[\"'][^>]*>",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+            TimeSpan.FromSeconds(1));
+        if (existingCsp.Success)
+        {
+            if (!existingCsp.Value.Contains("default-src 'none'", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new FileContentInvalidException("Validated document HTML has an unsafe content security policy.");
+            }
+        }
+        else
+        {
+            const string csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; object-src 'none'\">";
+            html = html.Insert(head.Index + head.Length, csp);
+        }
         await File.WriteAllTextAsync(draft.LocalPath, html, new UTF8Encoding(false), cancellationToken);
         var hardened = await DraftAsync(
             draft.LocalPath,
@@ -658,7 +675,8 @@ public sealed class OfflinePackageJobRunner(
         {
             throw new FileContentInvalidException("The publication snapshot identity is invalid.");
         }
-        if (snapshot.SchemaVersion != "1.1" || snapshot.Documents is null ||
+        if (snapshot.SchemaVersion is not ("1.1" or "1.2") ||
+            snapshot.SchemaVersion == "1.2" && snapshot.Documents is null ||
             snapshot.Primary.ByteLength <= 0 || string.IsNullOrWhiteSpace(snapshot.Primary.Sha256) ||
             snapshot.Captions.Any(caption => caption.ByteLength <= 0 || string.IsNullOrWhiteSpace(caption.Sha256)))
         {
@@ -861,6 +879,8 @@ public sealed class OfflinePackageJobRunner(
         long SourceRevision,
         string Title,
         string Language,
+        DocumentOutputKind Kind,
+        string Label,
         Guid FileId,
         string ObjectKey,
         string ContentType,

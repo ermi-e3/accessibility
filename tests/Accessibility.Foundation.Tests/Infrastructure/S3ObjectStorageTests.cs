@@ -16,24 +16,29 @@ public sealed class S3ObjectStorageTests
     public async Task StorageRoundTripSignedRangeAndNotFoundBehaviorWork()
     {
         var serviceUrl = Environment.GetEnvironmentVariable("ACCESSLEARN_TEST_S3_URL")!;
+        var accessKey = Environment.GetEnvironmentVariable("ACCESSLEARN_TEST_S3_ACCESS_KEY") ?? "test";
+        var secretKey = Environment.GetEnvironmentVariable("ACCESSLEARN_TEST_S3_SECRET_KEY") ?? "test";
+        var provisionCors = !bool.TryParse(
+            Environment.GetEnvironmentVariable("ACCESSLEARN_TEST_S3_PROVISION_CORS"),
+            out var configuredCors) || configuredCors;
         var bucketPrefix = Environment.GetEnvironmentVariable("ACCESSLEARN_TEST_S3_BUCKET") ?? "accesslearn-test";
         var bucketName = $"{bucketPrefix}-{Guid.CreateVersion7():N}";
         var options = new ObjectStorageOptions
         {
             ServiceUrl = serviceUrl,
             PublicServiceUrl = serviceUrl,
-            AccessKey = "test",
-            SecretKey = "test",
+            AccessKey = accessKey,
+            SecretKey = secretKey,
             BucketName = bucketName,
             ForcePathStyle = true,
-            ProvisionBucketCors = true
+            ProvisionBucketCors = provisionCors
         };
         var provisioner = new ObjectStorageProvisioner(
             Options.Create(options),
             Options.Create(new ObjectStorageProvisioningOptions
             {
-                AccessKey = "test",
-                SecretKey = "test"
+                AccessKey = accessKey,
+                SecretKey = secretKey
             }));
         await provisioner.InitializeAsync(CancellationToken.None);
 
@@ -76,9 +81,12 @@ public sealed class S3ObjectStorageTests
             Assert.Equal(HttpStatusCode.PartialContent, response.StatusCode);
             Assert.Equal(payload[..4], await response.Content.ReadAsByteArrayAsync(CancellationToken.None));
 
-            var cors = await s3.GetCORSConfigurationAsync(bucketName, CancellationToken.None);
-            Assert.Contains(cors.Configuration.Rules, rule =>
-                rule.AllowedMethods.Contains("GET") && rule.AllowedOrigins.Contains("*"));
+            if (provisionCors)
+            {
+                var cors = await s3.GetCORSConfigurationAsync(bucketName, CancellationToken.None);
+                Assert.Contains(cors.Configuration.Rules, rule =>
+                    rule.AllowedMethods.Contains("GET") && rule.AllowedOrigins.Contains("*"));
+            }
         }
         finally
         {

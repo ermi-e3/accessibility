@@ -12,7 +12,20 @@ export interface PlayerManifest {
   signLanguage: SignLanguageTrack | null;
   audioDescription: AudioDescriptionTrack | null;
   offlinePackage?: OfflinePackageLink | null;
+  documents?: DocumentLink[];
   warnings: string[];
+}
+
+export interface DocumentLink {
+  outputId: string;
+  title: string;
+  language: string;
+  kind: "html" | "pdf";
+  label: "semanticHtmlChecksPassed" | "veraPdfUa1ProfilePassed";
+  url: string;
+  contentType: "text/html" | "text/html; charset=utf-8" | "application/pdf";
+  byteLength: number;
+  sha256: string;
 }
 
 export interface PlayerMedia {
