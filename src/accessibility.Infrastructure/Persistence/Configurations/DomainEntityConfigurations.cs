@@ -268,6 +268,8 @@ internal sealed class AccessibleDocumentConfiguration : IEntityTypeConfiguration
         builder.Property(document => document.Title).HasMaxLength(200).IsRequired();
         builder.Property(document => document.Language).HasMaxLength(35).IsRequired();
         builder.Property(document => document.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(document => document.NormalizerVersion).HasMaxLength(100);
+        builder.Property(document => document.IssueSummaryJson).HasColumnType("jsonb");
 
         builder.HasOne<Lesson>()
             .WithMany()
@@ -292,6 +294,9 @@ internal sealed class DocumentImageConfiguration : IEntityTypeConfiguration<Docu
     {
         ConfigurationDefaults.ConfigureAuditableEntity(builder);
         builder.Property(image => image.AltText).HasMaxLength(2_000);
+        builder.Property(image => image.RelationshipId).HasMaxLength(200).IsRequired();
+        builder.Property(image => image.SourceLocation).HasMaxLength(500).IsRequired();
+        builder.Property(image => image.SuggestedAltText).HasMaxLength(2_000);
         builder.Property(image => image.ReviewStatus).HasConversion<string>().HasMaxLength(32).IsRequired();
 
         builder.HasOne<AccessibleDocument>()
@@ -302,8 +307,16 @@ internal sealed class DocumentImageConfiguration : IEntityTypeConfiguration<Docu
             .WithMany()
             .HasForeignKey(image => image.StoredFileId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(image => image.ReviewedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(image => new { image.DocumentId, image.Sequence }).IsUnique();
+        builder.HasIndex(image => new { image.DocumentId, image.RelationshipId });
+        builder.ToTable(table => table.HasCheckConstraint(
+            "ck_document_images_approved_alternative",
+            "review_status <> 'Approved' OR (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL AND ((is_decorative AND alt_text IS NULL) OR (NOT is_decorative AND alt_text IS NOT NULL AND length(btrim(alt_text)) > 0)))"));
     }
 }
 
@@ -315,6 +328,10 @@ internal sealed class DocumentOutputConfiguration : IEntityTypeConfiguration<Doc
         builder.Property(output => output.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(output => output.GeneratorVersion).HasMaxLength(100).IsRequired();
         builder.Property(output => output.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(output => output.ValidatorName).HasMaxLength(100);
+        builder.Property(output => output.ValidatorVersion).HasMaxLength(100);
+        builder.Property(output => output.ValidationProfile).HasMaxLength(100);
+        builder.Property(output => output.ValidationSummaryJson).HasColumnType("jsonb");
 
         builder.HasOne<AccessibleDocument>()
             .WithMany()
@@ -330,7 +347,13 @@ internal sealed class DocumentOutputConfiguration : IEntityTypeConfiguration<Doc
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(output => new { output.DocumentId, output.SourceRevision, output.Kind, output.GeneratorVersion }).IsUnique();
-        builder.ToTable(table => table.HasCheckConstraint("ck_document_outputs_source_revision", "source_revision > 0"));
+        builder.ToTable(table =>
+        {
+            table.HasCheckConstraint("ck_document_outputs_source_revision", "source_revision > 0");
+            table.HasCheckConstraint(
+                "ck_document_outputs_validation_provenance",
+                "status NOT IN ('Validated', 'ValidationFailed', 'Failed') OR (validation_report_file_id IS NOT NULL AND validator_name IS NOT NULL AND validator_version IS NOT NULL AND validation_profile IS NOT NULL AND validation_summary_json IS NOT NULL AND validated_at IS NOT NULL)");
+        });
     }
 }
 

@@ -64,6 +64,19 @@
                            "byteLength":  370945,
                            "sha256":  "2540b01a6a90405dd5cf509af922cd339513200f038f2147642b4d90def32d16"
                        },
+    "documents":  [
+                       {
+                           "outputId":  "demo-semantic-html",
+                           "title":  "Inclusive communication study guide",
+                           "language":  "en",
+                           "kind":  "html",
+                           "label":  "semanticHtmlChecksPassed",
+                           "url":  "/assets/documents/accesslearn-demo/inclusive-communication.html",
+                           "contentType":  "text/html; charset=utf-8",
+                           "byteLength":  2101,
+                           "sha256":  "6c05176915353b2eb52d3d48ed276a516c97e21b3fde9f4a3386d2dcb5f0117a"
+                       }
+                   ],
     "warnings":  [
                      "amharicDraftNotReviewed",
                      "ethslDemoNotReviewed",

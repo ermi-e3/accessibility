@@ -1,3 +1,5 @@
+using Accessibility.Application.Abstractions;
+
 namespace Accessibility.Application.Features.Player;
 
 public interface IPlayerPublicationService
@@ -26,6 +28,10 @@ public interface IPlayerPublicationService
         Guid lessonId,
         Guid publicationId,
         string language,
+        CancellationToken cancellationToken);
+
+    Task<PublicDocumentResourceV1> GetPublicDocumentAsync(
+        Guid outputId,
         CancellationToken cancellationToken);
 }
 
@@ -78,7 +84,29 @@ public sealed record PlayerManifestV1(
     PlayerSignLanguageV1? SignLanguage,
     PlayerAudioDescriptionV1? AudioDescription,
     PlayerOfflinePackageV1? OfflinePackage,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    public IReadOnlyList<PlayerDocumentV1> Documents { get; init; } = [];
+}
+
+public sealed record PlayerDocumentV1(
+    Guid OutputId,
+    string Title,
+    string Language,
+    string Kind,
+    string Label,
+    string Url,
+    string ContentType,
+    long ByteLength,
+    string Sha256);
+
+public sealed record PublicDocumentResourceV1(
+    Guid OutputId,
+    ObjectStorageReadResult Resource,
+    string Sha256) : IAsyncDisposable
+{
+    public ValueTask DisposeAsync() => Resource.DisposeAsync();
+}
 
 public sealed record PlayerMediaV1(
     string Url,

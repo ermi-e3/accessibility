@@ -6,6 +6,10 @@
 @accessibility.Api_LessonVersion = 1
 @accessibility.Api_SourceAssetId = replace-with-primary-media-asset-id
 @accessibility.Api_ProcessingJobId = replace-with-processing-job-id
+@accessibility.Api_DocumentId = replace-with-document-id
+@accessibility.Api_DocumentImageId = replace-with-document-image-id
+@accessibility.Api_DocumentOutputId = replace-with-document-output-id
+@accessibility.Api_DocumentVersion = 1
 
 GET {{accessibility.Api_HostAddress}}/health/live
 Accept: application/json
@@ -101,5 +105,86 @@ Authorization: Bearer {{accessibility.Api_ApiKey}}
   "description": "Lesson created through the scoped integration API.",
   "sourceLanguage": "en"
 }
+
+###
+
+POST {{accessibility.Api_HostAddress}}/api/v1/lessons/{{accessibility.Api_LessonId}}/documents
+Accept: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+Content-Type: multipart/form-data; boundary=accesslearn-document-boundary
+
+--accesslearn-document-boundary
+Content-Disposition: form-data; name="title"
+
+Inclusive communication study guide
+--accesslearn-document-boundary
+Content-Disposition: form-data; name="language"
+
+en
+--accesslearn-document-boundary
+Content-Disposition: form-data; name="file"; filename="structured-en-am.docx"
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+< ../../sample-content/documents/structured-en-am.docx
+--accesslearn-document-boundary--
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/documents/{{accessibility.Api_DocumentId}}
+Accept: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/documents/{{accessibility.Api_DocumentId}}/normalized-model
+Accept: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/documents/{{accessibility.Api_DocumentId}}/preview
+Accept: text/html
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+
+###
+
+PATCH {{accessibility.Api_HostAddress}}/api/v1/documents/{{accessibility.Api_DocumentId}}/images/{{accessibility.Api_DocumentImageId}}
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+If-Match: "{{accessibility.Api_DocumentVersion}}"
+
+{
+  "altText": "Reviewed description of the meaningful image.",
+  "isDecorative": false
+}
+
+###
+
+POST {{accessibility.Api_HostAddress}}/api/v1/documents/{{accessibility.Api_DocumentId}}/outputs
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+If-Match: "{{accessibility.Api_DocumentVersion}}"
+Idempotency-Key: demo-document-output-request
+
+{
+  "formats": ["html", "pdf"]
+}
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/documents/{{accessibility.Api_DocumentId}}/outputs
+Accept: application/json
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/documents/{{accessibility.Api_DocumentId}}/outputs/{{accessibility.Api_DocumentOutputId}}/download
+Authorization: Bearer {{accessibility.Api_ApiKey}}
+
+###
+
+GET {{accessibility.Api_HostAddress}}/api/v1/public/documents/{{accessibility.Api_DocumentOutputId}}
 
 ###

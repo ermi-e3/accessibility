@@ -44,11 +44,6 @@ public interface IProcessingService
         TranscriptExchangeFormat format,
         CancellationToken cancellationToken);
 
-    Task<DocumentSourceModel> UploadDocumentAsync(
-        Guid lessonId,
-        UploadDocumentCommand command,
-        QuarantinedUpload upload,
-        CancellationToken cancellationToken);
 }
 
 public sealed record StartProcessingCommand(
@@ -84,6 +79,7 @@ public sealed record ProcessingJobModel(
     Guid Id,
     Guid? LessonId,
     Guid? MediaAssetId,
+    Guid? DocumentId,
     string Type,
     string Status,
     int ProgressPercentage,
@@ -95,6 +91,7 @@ public sealed record ProcessingJobModel(
     DateTimeOffset? CompletedAt,
     DateTimeOffset? CancellationRequestedAt,
     long Version,
+    bool CanRetry,
     IReadOnlyList<ProcessingAttemptModel>? AttemptHistory = null);
 
 public sealed record ProcessingAttemptModel(
@@ -134,16 +131,3 @@ public sealed record TranscriptExportModel(
     string FileName,
     string ContentType,
     string Content);
-
-public sealed record UploadDocumentCommand(string Title, string Language);
-
-public sealed record DocumentSourceModel(
-    Guid Id,
-    Guid LessonId,
-    string Title,
-    string Language,
-    string Status,
-    string FileName,
-    long ByteLength,
-    string Sha256,
-    long Version);

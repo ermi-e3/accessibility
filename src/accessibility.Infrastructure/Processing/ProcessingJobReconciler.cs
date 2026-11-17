@@ -53,7 +53,17 @@ public sealed class ProcessingJobReconciler(
             {
                 attempt.Fail("LEASE_EXPIRED", "The processing lease expired before completion.", now);
             }
-            if (job.Attempts < 4) job.Requeue();
+            if (job.Attempts < 4)
+            {
+                job.Requeue();
+            }
+            else if (job.Type == ProcessingJobType.NormalizeDocument && job.DocumentId.HasValue)
+            {
+                var document = await database.Documents.SingleOrDefaultAsync(
+                    item => item.Id == job.DocumentId.Value,
+                    cancellationToken);
+                document?.Fail();
+            }
         }
         await database.SaveChangesAsync(cancellationToken);
 

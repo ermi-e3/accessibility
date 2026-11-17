@@ -85,6 +85,8 @@ test('Savanna concept loads the captioned sample and emits completion', async ({
   expect(orderIsCorrect).toBe(true);
   const player = page.locator('accesslearn-player');
   await expect(player.locator('[data-status]')).toContainText('Lesson ready', { timeout: 10_000 });
+  await expect(player.getByRole('link', { name: 'Inclusive communication study guide (HTML)' }))
+    .toHaveAttribute('href', /assets\/documents\/accesslearn-demo\/inclusive-communication\.html$/);
   await expect(player.locator('[data-caption-select]')).toHaveValue('en');
   await player.locator('[data-transcript-button]').click();
   await expect(player.locator('[data-segments] > li')).toHaveCount(4);
@@ -137,7 +139,22 @@ test('sample manifest and video support static same-origin delivery', async ({ r
   const manifest = await request.get('/api/v1/public/lessons/demo-accessible-careers/manifest');
   expect(manifest.ok()).toBe(true);
   expect(manifest.headers()['content-type']).toContain('application/json');
-  expect((await manifest.json()).captions[0]).toMatchObject({ language: 'en', isHumanReviewed: true });
+  const manifestBody = await manifest.json();
+  expect(manifestBody.captions[0]).toMatchObject({ language: 'en', isHumanReviewed: true });
+  expect(manifestBody.documents[0]).toMatchObject({
+    title: 'Inclusive communication study guide',
+    kind: 'html',
+    label: 'semanticHtmlChecksPassed',
+    byteLength: 2101,
+  });
+
+  const document = await request.get('/assets/documents/accesslearn-demo/inclusive-communication.html');
+  expect(document.ok()).toBe(true);
+  expect(document.headers()['content-type']).toContain('text/html');
+  const documentHtml = await document.text();
+  expect(documentHtml).toContain('<main>');
+  expect(documentHtml).toContain('<th scope="col">');
+  expect(documentHtml).toContain('lang="am"');
 
   const video = await request.get('/assets/media/accesslearn-demo/sample-lesson.webm', {
     headers: { Range: 'bytes=0-1023' },
@@ -151,4 +168,14 @@ test('sample manifest and video support static same-origin delivery', async ({ r
   expect(offline.ok()).toBe(true);
   expect(offline.headers()['content-type']).toBe('application/zip');
   expect((await offline.body()).byteLength).toBeGreaterThan(300_000);
+});
+
+test('semantic document fixture preserves structure, language, and accessibility', async ({ page }) => {
+  await page.goto('/assets/documents/accesslearn-demo/inclusive-communication.html');
+  await expect(page.getByRole('heading', { level: 1, name: 'Inclusive communication study guide' })).toBeVisible();
+  await expect(page.getByRole('listitem')).toHaveCount(3);
+  await expect(page.getByRole('columnheader')).toHaveCount(2);
+  await expect(page.locator('[lang="am"]')).toContainText(/[\u1200-\u137f]/u);
+  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(results.violations).toEqual([]);
 });

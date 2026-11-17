@@ -19,6 +19,7 @@ const messages = {
     transcriptLanguage: "Transcript language",
     transcriptSearch: "Search transcript",
     transcriptEmpty: "No matching transcript segments",
+    documents: "Accessible documents",
     signLanguage: "Ethiopian Sign Language",
     audioDescription: "Audio description",
     downloadOffline: "Download offline",
@@ -58,6 +59,7 @@ const messages = {
     missingAmharicCaptions: "Amharic captions are unavailable.",
     missingSignLanguage: "Ethiopian Sign Language interpretation is unavailable.",
     missingAudioDescription: "Audio description is unavailable.",
+    documentOutputsUnavailable: "One or more lesson documents are not yet available in reviewed formats.",
     amharicDraftNotReviewed: "The Amharic translation is a draft and has not been reviewed.",
     ethslDemoNotReviewed: "The sign-language window uses control-demo media until an educator uploads reviewed EthSL interpretation."
   },
@@ -79,6 +81,7 @@ const messages = {
     transcriptLanguage: "የንግግር ጽሑፍ ቋንቋ",
     transcriptSearch: "የንግግር ጽሑፍ ፈልግ",
     transcriptEmpty: "የሚዛመድ ጽሑፍ አልተገኘም",
+    documents: "ተደራሽ ሰነዶች",
     signLanguage: "የኢትዮጵያ ምልክት ቋንቋ",
     audioDescription: "የድምፅ መግለጫ",
     downloadOffline: "ለኦፍላይን አውርድ",
@@ -118,6 +121,7 @@ const messages = {
     missingAmharicCaptions: "የአማርኛ ጽሑፍ መግለጫ አይገኝም።",
     missingSignLanguage: "የኢትዮጵያ ምልክት ቋንቋ ትርጉም አይገኝም።",
     missingAudioDescription: "የድምፅ መግለጫ አይገኝም።",
+    documentOutputsUnavailable: "አንዳንድ የትምህርት ሰነዶች በተገመገሙ ቅርጸቶች ገና አይገኙም።",
     amharicDraftNotReviewed: "የአማርኛ ትርጉሙ ረቂቅ ነው እና አልተገምገመም።",
     ethslDemoNotReviewed: "አስተማሪ የተገመገመ የኢትዮጵያ ምልክት ቋንቋ ቪዲዮ እስኪጭን ድረስ መስኮቱ የመቆጣጠሪያ ሙከራ ሚዲያ ያሳያል።"
   }

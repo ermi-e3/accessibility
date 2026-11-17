@@ -8,6 +8,10 @@ public static class AccessLearnScopes
 
     public const string ResourcesRead = "resources:read";
 
+    public const string DocumentsWrite = "documents:write";
+
+    public const string DocumentsRead = "documents:read";
+
     public const string ProcessingRead = "processing:read";
 
     public const string ProcessingWrite = "processing:write";

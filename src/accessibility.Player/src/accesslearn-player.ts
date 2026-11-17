@@ -437,6 +437,10 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
             <ol class="segments" data-segments></ol>
           </aside>
         </div>
+        <section class="documents" data-documents hidden aria-labelledby="al-documents-title">
+          <h3 id="al-documents-title">${this.#text("documents")}</h3>
+          <ul data-document-list></ul>
+        </section>
         <dialog class="dialog" data-settings-dialog aria-labelledby="al-settings-title">
           <h3 id="al-settings-title">${this.#text("captionSettings")}</h3>
           <div class="settings-grid">
@@ -503,6 +507,24 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       offline.download = `${manifest.lessonId}-${manifest.offlinePackage.profile}.zip`;
       offline.textContent = `${this.#text("downloadOffline")} (${this.#formatBytes(manifest.offlinePackage.byteLength)})`;
       offline.title = `SHA-256: ${manifest.offlinePackage.sha256}`;
+    }
+    const documentSection = this.#element<HTMLElement>("[data-documents]");
+    const documentList = this.#element<HTMLUListElement>("[data-document-list]");
+    const documents = manifest.documents ?? [];
+    if (documentSection && documentList) {
+      documentList.replaceChildren(...documents.map((resource) => {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = resource.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.lang = resource.language;
+        link.textContent = `${resource.title} (${resource.kind.toUpperCase()})`;
+        link.title = resource.label;
+        item.append(link);
+        return item;
+      }));
+      documentSection.hidden = documents.length === 0;
     }
     const warnings = this.#element<HTMLUListElement>("[data-warnings]");
     if (warnings && manifest.warnings.length > 0) {
@@ -1246,10 +1268,17 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
         !manifest.media?.url || !/^(video|audio)\//.test(manifest.media.contentType) ||
         !this.#isSafeUrl(manifest.media.url) ||
         manifest.media.durationMilliseconds <= 0 || !Array.isArray(manifest.captions) ||
-        !Array.isArray(manifest.transcripts) || !Array.isArray(manifest.warnings) ||
+         !Array.isArray(manifest.transcripts) || !Array.isArray(manifest.warnings) ||
         !Number.isFinite(Date.parse(manifest.expiresAt)) || Date.parse(manifest.expiresAt) <= Date.now() ||
         manifest.captions.some((track) => !track.language || !track.label || !this.#isSafeUrl(track.url)) ||
-        manifest.transcripts.some((track) => !track.language || !track.label || !this.#isSafeUrl(track.url)) ||
+         manifest.transcripts.some((track) => !track.language || !track.label || !this.#isSafeUrl(track.url)) ||
+         Boolean(manifest.documents && (!Array.isArray(manifest.documents) || manifest.documents.some((item) =>
+           !item.outputId || !item.title || !item.language || !["html", "pdf"].includes(item.kind) ||
+           !["semanticHtmlChecksPassed", "veraPdfUa1ProfilePassed"].includes(item.label) ||
+           !this.#isSafeUrl(item.url) ||
+           (item.kind === "html" ? !item.contentType.startsWith("text/html") : item.contentType !== "application/pdf") ||
+           !Number.isSafeInteger(item.byteLength) || item.byteLength <= 0 ||
+           !/^[a-f0-9]{64}$/i.test(item.sha256)))) ||
         Boolean(manifest.signLanguage &&
           (manifest.signLanguage.language !== "eth" || !this.#isSafeUrl(manifest.signLanguage.url) ||
            !Number.isFinite(manifest.signLanguage.syncOffsetMilliseconds) ||
@@ -1372,6 +1401,7 @@ export class AccessLearnPlayer extends HTMLElement implements AccessLearnPlayerE
       "missingAmharicCaptions",
       "missingSignLanguage",
       "missingAudioDescription",
+      "documentOutputsUnavailable",
       "amharicDraftNotReviewed",
       "ethslDemoNotReviewed"
     ]

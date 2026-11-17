@@ -24,7 +24,7 @@ public sealed class PlayerPublicationService(
     IOptions<PlayerDeliveryOptions> options,
     ILogger<PlayerPublicationService> logger) : IPlayerPublicationService
 {
-    private const string SchemaVersion = "1.1";
+    private const string SchemaVersion = "1.2";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly PlayerDeliveryOptions _options = options.Value;
 
@@ -470,7 +470,7 @@ public sealed class PlayerPublicationService(
                 from output in database.DocumentOutputs
                 join document in database.Documents on output.DocumentId equals document.Id
                 join file in database.StoredFiles on output.StoredFileId equals file.Id
-                where document.LessonId == lesson.Id && output.Kind == DocumentOutputKind.Html &&
+                where document.LessonId == lesson.Id &&
                       output.Status == DocumentOutputStatus.Validated && file.Status == StoredFileStatus.Ready &&
                       output.SourceRevision == document.Version
                 select new SnapshotDocument(
@@ -479,20 +479,39 @@ public sealed class PlayerPublicationService(
                     output.SourceRevision,
                     document.Title,
                     document.Language,
+                    output.Kind,
+                    output.Kind == DocumentOutputKind.Html
+                        ? "semanticHtmlChecksPassed"
+                        : "veraPdfUa1ProfilePassed",
+                    output.CreatedAt,
                     file.Id,
                     file.ObjectKey,
                     file.ContentType,
                     file.ByteLength,
                     file.Sha256))
             .ToListAsync(cancellationToken);
+        var documentCount = await database.Documents.CountAsync(
+            document => document.LessonId == lesson.Id,
+            cancellationToken);
+        var validatedHtmlDocumentCount = documentCandidates
+            .Where(document => document.Kind == DocumentOutputKind.Html)
+            .Select(document => document.DocumentId)
+            .Distinct()
+            .Count();
+        if (validatedHtmlDocumentCount < documentCount)
+        {
+            warnings.Add("documentOutputsUnavailable");
+        }
         var documents = documentCandidates
-            .GroupBy(document => document.DocumentId)
+            .GroupBy(document => new { document.DocumentId, document.Kind })
             .Select(group => group
                 .OrderByDescending(document => document.SourceRevision)
-                .ThenBy(document => document.OutputId)
+                .ThenByDescending(document => document.CreatedAt)
+                .ThenByDescending(document => document.OutputId)
                 .First())
             .OrderBy(document => document.Title, StringComparer.Ordinal)
             .ThenBy(document => document.DocumentId)
+            .ThenBy(document => document.Kind)
             .ToArray();
         var publicationRevision = await database.LessonPublications
             .Where(publication => publication.LessonId == lesson.Id)
@@ -689,6 +708,19 @@ public sealed class PlayerPublicationService(
                 readyPackage.Checksum ?? readyPackage.Sha256);
         }
 
+        var documents = (snapshot.Documents ?? [])
+            .Select(document => new PlayerDocumentV1(
+                document.OutputId,
+                document.Title,
+                document.Language,
+                ToContract(document.Kind),
+                document.Label,
+                new Uri(publicApiBase, $"api/v1/public/documents/{document.OutputId}").ToString(),
+                document.ContentType,
+                document.ByteLength,
+                document.Sha256))
+            .ToArray();
+
         return new PlayerManifestV1(
             snapshot.SchemaVersion,
             snapshot.LessonId,
@@ -707,7 +739,36 @@ public sealed class PlayerPublicationService(
             sign,
             description,
             offlinePackage,
-            snapshot.Warnings);
+            snapshot.Warnings)
+        {
+            Documents = documents
+        };
+    }
+
+    public async Task<PublicDocumentResourceV1> GetPublicDocumentAsync(
+        Guid outputId,
+        CancellationToken cancellationToken)
+    {
+        var lessonId = await (
+                from output in database.DocumentOutputs.AsNoTracking()
+                join sourceDocument in database.Documents.AsNoTracking() on output.DocumentId equals sourceDocument.Id
+                join lesson in database.Lessons.AsNoTracking() on sourceDocument.LessonId equals lesson.Id
+                where output.Id == outputId && lesson.CurrentPublicationId != null
+                select lesson.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (lessonId == Guid.Empty)
+        {
+            throw new ResourceNotFoundException("Published document", outputId);
+        }
+
+        var snapshot = await LoadCurrentSnapshotAsync(lessonId, cancellationToken);
+        var document = snapshot.Documents?.SingleOrDefault(item => item.OutputId == outputId)
+            ?? throw new ResourceNotFoundException("Published document", outputId);
+        var resource = await objectStorage.OpenReadAsync(document.ObjectKey, cancellationToken);
+        return new PublicDocumentResourceV1(
+            document.OutputId,
+            resource,
+            document.Sha256);
     }
 
     public async Task<PublicTranscriptV1> GetPublicTranscriptAsync(
@@ -826,25 +887,29 @@ public sealed class PlayerPublicationService(
                 from output in database.DocumentOutputs
                 join document in database.Documents on output.DocumentId equals document.Id
                 join file in database.StoredFiles on output.StoredFileId equals file.Id
-                where document.LessonId == lessonId && output.Kind == DocumentOutputKind.Html &&
+                where document.LessonId == lessonId &&
                       output.Status == DocumentOutputStatus.Validated && output.SourceRevision == document.Version &&
                       file.Status == StoredFileStatus.Ready
                 select new
                 {
                     DocumentId = document.Id,
                     document.Title,
+                    output.Kind,
                     OutputId = output.Id,
-                    output.SourceRevision
+                    output.SourceRevision,
+                    output.CreatedAt
                 })
             .ToListAsync(cancellationToken);
         var currentDocumentIds = currentDocumentCandidates
-            .GroupBy(document => document.DocumentId)
+            .GroupBy(document => new { document.DocumentId, document.Kind })
             .Select(group => group
                 .OrderByDescending(document => document.SourceRevision)
-                .ThenBy(document => document.OutputId)
+                .ThenByDescending(document => document.CreatedAt)
+                .ThenByDescending(document => document.OutputId)
                 .First())
             .OrderBy(document => document.Title, StringComparer.Ordinal)
             .ThenBy(document => document.DocumentId)
+            .ThenBy(document => document.Kind)
             .Select(document => document.OutputId)
             .ToArray();
         var snapshotDocumentIds = (snapshot.Documents ?? []).Select(document => document.OutputId).ToArray();
@@ -988,10 +1053,24 @@ public sealed class PlayerPublicationService(
             }
         }
         var documentOutputIds = (snapshot.Documents ?? []).Select(document => document.OutputId).ToArray();
-        var validDocuments = await database.DocumentOutputs.CountAsync(
-            output => documentOutputIds.Contains(output.Id) && output.Status == DocumentOutputStatus.Validated,
-            cancellationToken);
-        if (validDocuments != documentOutputIds.Length)
+        var persistedDocuments = await database.DocumentOutputs.AsNoTracking()
+            .Where(output => documentOutputIds.Contains(output.Id))
+            .Select(output => new
+            {
+                output.Id,
+                output.DocumentId,
+                output.StoredFileId,
+                output.SourceRevision,
+                output.Kind
+            })
+            .ToDictionaryAsync(output => output.Id, cancellationToken);
+        if (persistedDocuments.Count != documentOutputIds.Length ||
+            (snapshot.Documents ?? []).Any(document =>
+                !persistedDocuments.TryGetValue(document.OutputId, out var output) ||
+                output.DocumentId != document.DocumentId ||
+                output.StoredFileId != document.FileId ||
+                output.SourceRevision != document.SourceRevision ||
+                output.Kind != document.Kind))
         {
             throw new FileContentInvalidException("A publication document reference is invalid.");
         }
@@ -1130,7 +1209,7 @@ public sealed class PlayerPublicationService(
                 segment.SpeakerLabel)).ToArray(),
             transcript.Version);
 
-    private static IReadOnlyList<string> BuildWarnings(
+    private static List<string> BuildWarnings(
         IReadOnlyList<SnapshotCaption> captions,
         IReadOnlyList<SnapshotAsset> assets)
     {
@@ -1242,6 +1321,9 @@ public sealed class PlayerPublicationService(
         long SourceRevision,
         string Title,
         string Language,
+        DocumentOutputKind Kind,
+        string Label,
+        DateTimeOffset CreatedAt,
         Guid FileId,
         string ObjectKey,
         string ContentType,

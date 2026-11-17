@@ -70,14 +70,51 @@ public sealed class FoundationDomainTests
     [Fact]
     public void ImageDescriptionRequiresAltTextOrDecorativeStateExclusively()
     {
-        var image = new DocumentImage(Guid.CreateVersion7(), Guid.CreateVersion7(), 0);
+        var image = new DocumentImage(
+            Guid.CreateVersion7(),
+            Guid.CreateVersion7(),
+            0,
+            "rId5",
+            "body/paragraph[1]/image[1]",
+            "source suggestion",
+            suggestedDecorative: false);
+        var reviewerId = Guid.CreateVersion7();
+        var reviewedAt = DateTimeOffset.UtcNow;
 
-        Assert.Throws<ArgumentException>(() => image.ApproveDescription(null, false));
-        Assert.Throws<ArgumentException>(() => image.ApproveDescription("description", true));
+        Assert.Throws<ArgumentException>(() => image.ApproveDescription(null, false, reviewerId, reviewedAt));
+        Assert.Throws<ArgumentException>(() => image.ApproveDescription("description", true, reviewerId, reviewedAt));
 
-        image.ApproveDescription("description", false);
+        image.ApproveDescription("description", false, reviewerId, reviewedAt);
         Assert.Equal(ReviewStatus.Approved, image.ReviewStatus);
         Assert.Equal("description", image.AltText);
+        Assert.Equal(reviewerId, image.ReviewedByUserId);
+    }
+
+    [Fact]
+    public void DocumentOutputRecordsTruthfulFailureAndCanBeRegenerated()
+    {
+        var output = new DocumentOutput(
+            Guid.CreateVersion7(),
+            sourceRevision: 3,
+            DocumentOutputKind.Pdf,
+            Guid.CreateVersion7(),
+            "weasyprint-70.0");
+        var reportId = Guid.CreateVersion7();
+
+        output.RecordFailure(
+            reportId,
+            "veraPDF",
+            "1.30.4",
+            "ua1",
+            "{\"outcome\":\"operationalFailure\"}",
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal(DocumentOutputStatus.Failed, output.Status);
+        Assert.Equal(reportId, output.ValidationReportFileId);
+        output.RetryGeneration(Guid.CreateVersion7(), "weasyprint-70.0");
+        Assert.Equal(DocumentOutputStatus.Generated, output.Status);
+        Assert.Null(output.ValidationReportFileId);
+        Assert.Null(output.ValidatorName);
     }
 
     [Fact]

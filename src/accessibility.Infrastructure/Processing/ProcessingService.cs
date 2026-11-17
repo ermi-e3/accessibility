@@ -1,9 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.IO.Compression;
-using System.Xml;
-using System.Xml.Linq;
 using Accessibility.Application.Abstractions;
 using Accessibility.Application.Authorization;
 using Accessibility.Application.Common;
@@ -23,7 +20,6 @@ public sealed class ProcessingService(
     ITranscriptionProvider transcription,
     ITranslationProvider translation,
     ITranscriptFormatService formats,
-    IObjectStorage objectStorage,
     ProcessingCancellationRegistry cancellationRegistry,
     TimeProvider timeProvider,
     Microsoft.Extensions.Logging.ILogger<ProcessingService> logger) : IProcessingService
@@ -222,13 +218,6 @@ public sealed class ProcessingService(
         {
             throw new StateConflictException("The processing job reached its maximum attempt count.");
         }
-        var payload = JsonSerializer.Deserialize<PrepareAccessibilityPayload>(job.PayloadJson ?? string.Empty)
-            ?? throw new StateConflictException("The processing payload is invalid.");
-        var currentConfiguration = $"{WorkflowVersion}:{transcription.Version}:{translation.Version}";
-        if (payload.ConfigurationVersion != currentConfiguration)
-        {
-            throw new StateConflictException("Provider configuration changed and a new processing job is required.");
-        }
         var retryableCodes = new HashSet<string>(StringComparer.Ordinal)
         {
             "PROCESSOR_UNAVAILABLE",
@@ -240,29 +229,14 @@ public sealed class ProcessingService(
         {
             throw new StateConflictException("The processing failure is not classified as retryable.");
         }
-        var inputIsCurrent = await (
-                from asset in database.MediaAssets
-                join file in database.StoredFiles on asset.StoredFileId equals file.Id
-                where asset.Id == payload.SourceAssetId && asset.IsActive && asset.Version == payload.SourceAssetVersion &&
-                      file.Sha256 == payload.SourceFileSha256
-                select asset.Id)
-            .AnyAsync(cancellationToken);
-        if (!inputIsCurrent)
+
+        if (job.Type is ProcessingJobType.NormalizeDocument or ProcessingJobType.GenerateDocumentOutputs)
         {
-            throw new StateConflictException("The processing input changed and a new job is required.");
+            await EnsureDocumentRetryInputIsCurrentAsync(job, cancellationToken);
         }
-        if (payload.SourceTranscriptId.HasValue)
+        else
         {
-            var sourceTranscript = await database.Transcripts.SingleOrDefaultAsync(
-                transcript => transcript.Id == payload.SourceTranscriptId.Value &&
-                              transcript.ReviewStatus == ReviewStatus.Approved,
-                cancellationToken);
-            if (sourceTranscript is null || sourceTranscript.Version != payload.SourceTranscriptVersion ||
-                await ComputeTranscriptFingerprintAsync(sourceTranscript.Id, cancellationToken) !=
-                payload.SourceTranscriptFingerprint)
-            {
-                throw new StateConflictException("The reviewed source transcript changed and a new job is required.");
-            }
+            await EnsureMediaRetryInputIsCurrentAsync(job, cancellationToken);
         }
         try
         {
@@ -284,6 +258,82 @@ public sealed class ProcessingService(
             logger.LogWarning(exception, "Retried processing job {ProcessingJobId} remains queued for reconciliation", job.Id);
         }
         return ToModel(job);
+    }
+
+    private async Task EnsureMediaRetryInputIsCurrentAsync(
+        ProcessingJob job,
+        CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.Deserialize<PrepareAccessibilityPayload>(job.PayloadJson ?? string.Empty)
+            ?? throw new StateConflictException("The processing payload is invalid.");
+        var currentConfiguration = $"{WorkflowVersion}:{transcription.Version}:{translation.Version}";
+        if (payload.ConfigurationVersion != currentConfiguration)
+        {
+            throw new StateConflictException("Provider configuration changed and a new processing job is required.");
+        }
+        var inputIsCurrent = await (
+                from asset in database.MediaAssets
+                join file in database.StoredFiles on asset.StoredFileId equals file.Id
+                where asset.Id == payload.SourceAssetId && asset.IsActive && asset.Version == payload.SourceAssetVersion &&
+                      file.Sha256 == payload.SourceFileSha256
+                select asset.Id)
+            .AnyAsync(cancellationToken);
+        if (!inputIsCurrent)
+        {
+            throw new StateConflictException("The processing input changed and a new job is required.");
+        }
+        if (!payload.SourceTranscriptId.HasValue)
+        {
+            return;
+        }
+
+        var sourceTranscript = await database.Transcripts.SingleOrDefaultAsync(
+            transcript => transcript.Id == payload.SourceTranscriptId.Value &&
+                          transcript.ReviewStatus == ReviewStatus.Approved,
+            cancellationToken);
+        if (sourceTranscript is null || sourceTranscript.Version != payload.SourceTranscriptVersion ||
+            await ComputeTranscriptFingerprintAsync(sourceTranscript.Id, cancellationToken) !=
+            payload.SourceTranscriptFingerprint)
+        {
+            throw new StateConflictException("The reviewed source transcript changed and a new job is required.");
+        }
+    }
+
+    private async Task EnsureDocumentRetryInputIsCurrentAsync(
+        ProcessingJob job,
+        CancellationToken cancellationToken)
+    {
+        if (job.Type == ProcessingJobType.NormalizeDocument)
+        {
+            var payload = JsonSerializer.Deserialize<Accessibility.Application.Features.Documents.NormalizeDocumentPayload>(
+                job.PayloadJson ?? string.Empty)
+                ?? throw new StateConflictException("The document normalization payload is invalid.");
+            var current = await (
+                    from document in database.Documents
+                    join file in database.StoredFiles on document.SourceFileId equals file.Id
+                    where document.Id == payload.DocumentId && file.Id == payload.SourceFileId &&
+                          file.Status == StoredFileStatus.Ready && file.Sha256 == payload.SourceSha256
+                    select document.Id)
+                .AnyAsync(cancellationToken);
+            if (!current)
+            {
+                throw new StateConflictException("The document source changed and a new normalization job is required.");
+            }
+            return;
+        }
+
+        var outputPayload = JsonSerializer.Deserialize<Accessibility.Application.Features.Documents.GenerateDocumentOutputsPayload>(
+            job.PayloadJson ?? string.Empty)
+            ?? throw new StateConflictException("The document output payload is invalid.");
+        var outputIsCurrent = await database.Documents.AnyAsync(document =>
+            document.Id == outputPayload.DocumentId && document.Status == DocumentStatus.Ready &&
+            document.Version == outputPayload.SourceRevision &&
+            document.NormalizedModelFileId == outputPayload.NormalizedModelFileId,
+            cancellationToken);
+        if (!outputIsCurrent)
+        {
+            throw new StateConflictException("The reviewed document changed and a new output job is required.");
+        }
     }
 
     public async Task<ProcessingJobModel> CancelAsync(Guid jobId, CancellationToken cancellationToken)
@@ -521,98 +571,26 @@ public sealed class ProcessingService(
             formats.Serialize(segments, format));
     }
 
-    public async Task<DocumentSourceModel> UploadDocumentAsync(
-        Guid lessonId,
-        UploadDocumentCommand command,
-        QuarantinedUpload upload,
-        CancellationToken cancellationToken)
-    {
-        var lesson = await VisibleLessons().SingleOrDefaultAsync(item => item.Id == lessonId, cancellationToken)
-            ?? throw new ResourceNotFoundException("Lesson", lessonId);
-        if (!string.Equals(Path.GetExtension(upload.OriginalFileName), ".docx", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(
-                upload.ContentType,
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ContentTypeMismatchException("Structured documents must be DOCX files.");
-        }
-        if (upload.Header.Length < 4 || upload.Header[0] != 0x50 || upload.Header[1] != 0x4B ||
-            upload.Header[2] != 0x03 || upload.Header[3] != 0x04)
-        {
-            throw new FileContentInvalidException("The DOCX ZIP signature is invalid.");
-        }
-        ValidateDocxPackage(upload.FilePath);
-
-        var objectKey = $"lessons/{lesson.Id:N}/documents/{Guid.CreateVersion7():N}/{upload.Sha256[..16]}.docx";
-        var file = new StoredFile(
-            objectKey,
-            upload.OriginalFileName,
-            upload.ContentType,
-            upload.ByteLength,
-            upload.Sha256);
-        AccessibleDocument document;
-        try
-        {
-            document = new AccessibleDocument(lesson.Id, file.Id, command.Title, command.Language);
-        }
-        catch (ArgumentException exception)
-        {
-            throw new RequestValidationException(new Dictionary<string, string[]>
-            {
-                [exception.ParamName ?? "document"] = [exception.Message]
-            });
-        }
-        database.StoredFiles.Add(file);
-        database.Documents.Add(document);
-        await database.SaveChangesAsync(cancellationToken);
-        try
-        {
-            await using var stream = new FileStream(upload.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, true);
-            var write = await objectStorage.PutAsync(
-                objectKey,
-                stream,
-                upload.ContentType,
-                upload.ByteLength,
-                new Dictionary<string, string> { ["sha256"] = upload.Sha256, ["lesson-id"] = lesson.Id.ToString("N") },
-                cancellationToken);
-            file.MarkReady(write.ETag);
-            await database.SaveChangesAsync(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            file.Reject("Document upload was cancelled.");
-            document.Fail();
-            await database.SaveChangesAsync(CancellationToken.None);
-            throw;
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            file.Reject("Document upload did not complete.");
-            document.Fail();
-            await database.SaveChangesAsync(CancellationToken.None);
-            throw new StorageUnavailableException("The document could not be stored.", exception);
-        }
-
-        return new DocumentSourceModel(
-            document.Id,
-            lesson.Id,
-            document.Title,
-            document.Language,
-            Contract(document.Status),
-            file.OriginalFileName,
-            file.ByteLength,
-            file.Sha256,
-            document.Version);
-    }
-
     private IQueryable<Lesson> VisibleLessons() => userContext.IsInRole(AccessLearnRoles.Administrator)
         ? database.Lessons
         : database.Lessons.Where(lesson => lesson.OwnerUserId == RequireOwner());
 
-    private IQueryable<ProcessingJob> VisibleJobs() => userContext.IsInRole(AccessLearnRoles.Administrator)
-        ? database.ProcessingJobs
-        : database.ProcessingJobs.Where(job => job.RequestedByUserId == RequireOwner());
+    private IQueryable<ProcessingJob> VisibleJobs()
+    {
+        if (userContext.IsInRole(AccessLearnRoles.Administrator))
+        {
+            return database.ProcessingJobs;
+        }
+
+        var ownerId = RequireOwner();
+        return database.ProcessingJobs.Where(job =>
+            job.RequestedByUserId == ownerId ||
+            job.DocumentId.HasValue &&
+            database.Documents.Any(document =>
+                document.Id == job.DocumentId.Value &&
+                database.Lessons.Any(lesson =>
+                    lesson.Id == document.LessonId && lesson.OwnerUserId == ownerId)));
+    }
 
     private IQueryable<Transcript> VisibleTranscripts() =>
         from transcript in database.Transcripts
@@ -786,97 +764,11 @@ public sealed class ProcessingService(
     private static RequestValidationException InvalidSegments() =>
         new(new Dictionary<string, string[]> { ["segments"] = ["Transcript segment sequence or timing is invalid."] });
 
-    internal static void ValidateDocxPackage(string filePath)
-    {
-        const int maximumEntries = 10_000;
-        const long maximumExpandedBytes = 100 * 1024 * 1024;
-        const double maximumCompressionRatio = 100;
-        try
-        {
-            using var archive = ZipFile.OpenRead(filePath);
-            if (archive.Entries.Count is < 1 or > maximumEntries)
-            {
-                throw new FileContentInvalidException("The DOCX archive contains an invalid number of entries.");
-            }
-            long expandedBytes = 0;
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var entry in archive.Entries)
-            {
-                var name = entry.FullName.Replace('\\', '/');
-                if (name.StartsWith('/') || name.Contains("../", StringComparison.Ordinal) ||
-                    name.Contains(':') || !names.Add(name) ||
-                    ((entry.ExternalAttributes >> 16) & 0xF000) == 0xA000)
-                {
-                    throw new FileContentInvalidException("The DOCX archive contains an unsafe entry.");
-                }
-                expandedBytes = checked(expandedBytes + entry.Length);
-                if (expandedBytes > maximumExpandedBytes ||
-                    entry.Length > 0 && (entry.CompressedLength == 0 ||
-                        entry.Length / (double)entry.CompressedLength > maximumCompressionRatio))
-                {
-                    throw new FileContentInvalidException("The DOCX archive exceeds safe expansion limits.");
-                }
-            }
-            if (!names.Contains("[Content_Types].xml") || !names.Contains("word/document.xml"))
-            {
-                throw new FileContentInvalidException("The archive is not a valid WordprocessingML document.");
-            }
-            var contentTypes = LoadSafeXml(archive.GetEntry("[Content_Types].xml")!);
-            XNamespace contentTypesNamespace = "http://schemas.openxmlformats.org/package/2006/content-types";
-            if (contentTypes.Root?.Name != contentTypesNamespace + "Types" ||
-                !contentTypes.Root.Elements(contentTypesNamespace + "Override").Any(element =>
-                    (string?)element.Attribute("PartName") == "/word/document.xml" &&
-                    (string?)element.Attribute("ContentType") ==
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"))
-            {
-                throw new FileContentInvalidException("The DOCX content-type manifest is invalid.");
-            }
-            var document = LoadSafeXml(archive.GetEntry("word/document.xml")!);
-            XNamespace wordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-            if (document.Root?.Name != wordNamespace + "document")
-            {
-                throw new FileContentInvalidException("The DOCX main document namespace is invalid.");
-            }
-            XNamespace relationshipsNamespace = "http://schemas.openxmlformats.org/package/2006/relationships";
-            foreach (var relationshipEntry in archive.Entries.Where(entry =>
-                         entry.FullName.EndsWith(".rels", StringComparison.OrdinalIgnoreCase)))
-            {
-                var relationships = LoadSafeXml(relationshipEntry);
-                if (relationships.Root?.Name != relationshipsNamespace + "Relationships" ||
-                    relationships.Root.Elements(relationshipsNamespace + "Relationship").Any(element =>
-                        string.Equals((string?)element.Attribute("TargetMode"), "External", StringComparison.OrdinalIgnoreCase)))
-                {
-                    throw new FileContentInvalidException("The DOCX contains invalid or external relationships.");
-                }
-            }
-        }
-        catch (InvalidDataException exception)
-        {
-            throw new FileContentInvalidException($"The DOCX archive is invalid: {exception.Message}");
-        }
-        catch (XmlException exception)
-        {
-            throw new FileContentInvalidException($"The DOCX XML is invalid: {exception.Message}");
-        }
-    }
-
-    private static XDocument LoadSafeXml(ZipArchiveEntry entry)
-    {
-        var settings = new XmlReaderSettings
-        {
-            DtdProcessing = DtdProcessing.Prohibit,
-            XmlResolver = null,
-            MaxCharactersInDocument = 10 * 1024 * 1024
-        };
-        using var stream = entry.Open();
-        using var reader = XmlReader.Create(stream, settings);
-        return XDocument.Load(reader, LoadOptions.None);
-    }
-
     private static ProcessingJobModel ToModel(ProcessingJob job) => new(
         job.Id,
         job.LessonId,
         job.MediaAssetId,
+        job.DocumentId,
         Contract(job.Type),
         Contract(job.Status),
         job.ProgressPercentage,
@@ -887,7 +779,14 @@ public sealed class ProcessingService(
         job.StartedAt,
         job.CompletedAt,
         job.CancellationRequestedAt,
-        job.Version);
+        job.Version,
+        CanRetry(job));
+
+    private static bool CanRetry(ProcessingJob job) =>
+        job.Attempts < 4 &&
+        (job.Status == ProcessingJobStatus.Cancelled ||
+         job.Status == ProcessingJobStatus.Failed && job.ErrorCode is
+             "PROCESSOR_UNAVAILABLE" or "STORAGE_UNAVAILABLE" or "LEASE_EXPIRED");
 
     private static string Contract<TEnum>(TEnum value) where TEnum : struct, Enum
     {

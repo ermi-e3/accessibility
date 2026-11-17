@@ -23,18 +23,52 @@ public sealed class AccessibleDocument : AuditableEntity
 
     public Guid? NormalizedModelFileId { get; private set; }
 
+    public string? NormalizerVersion { get; private set; }
+
+    public string? IssueSummaryJson { get; private set; }
+
+    public DateTimeOffset? NormalizedAt { get; private set; }
+
     public string Title { get; private set; } = string.Empty;
 
     public string Language { get; private set; } = LanguageTags.English;
 
     public DocumentStatus Status { get; private set; } = DocumentStatus.Uploaded;
 
-    public void MarkNormalized(Guid normalizedModelFileId, bool needsReview)
+    public void MarkNormalizing()
+    {
+        if (Status is not (DocumentStatus.Uploaded or DocumentStatus.Failed or DocumentStatus.Stale))
+        {
+            throw new InvalidOperationException("Only an uploaded, failed, or stale document can be normalized.");
+        }
+
+        Status = DocumentStatus.Normalizing;
+    }
+
+    public void MarkNormalized(
+        Guid normalizedModelFileId,
+        string normalizerVersion,
+        string issueSummaryJson,
+        bool needsReview,
+        DateTimeOffset normalizedAt)
     {
         NormalizedModelFileId = normalizedModelFileId != Guid.Empty
             ? normalizedModelFileId
             : throw new ArgumentException("Normalized model file is required.", nameof(normalizedModelFileId));
+        NormalizerVersion = DomainValidation.RequiredText(normalizerVersion, nameof(normalizerVersion), 100);
+        IssueSummaryJson = DomainValidation.RequiredText(issueSummaryJson, nameof(issueSummaryJson), 64_000);
+        NormalizedAt = normalizedAt.ToUniversalTime();
         Status = needsReview ? DocumentStatus.NeedsReview : DocumentStatus.Ready;
+    }
+
+    public void SetReviewReadiness(bool ready)
+    {
+        if (NormalizedModelFileId is null)
+        {
+            throw new InvalidOperationException("The document must be normalized before review can complete.");
+        }
+
+        Status = ready ? DocumentStatus.Ready : DocumentStatus.NeedsReview;
     }
 
     public void MarkStale()

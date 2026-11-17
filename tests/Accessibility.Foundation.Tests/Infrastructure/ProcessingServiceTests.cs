@@ -31,7 +31,6 @@ public sealed class ProcessingServiceTests
             new FakeTranscriptionProvider(),
             new FakeTranslationProvider(),
             new TranscriptFormatService(),
-            new RunnerObjectStorage(),
             new ProcessingCancellationRegistry(),
             TimeProvider.System,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ProcessingService>.Instance);

@@ -62,6 +62,7 @@ public enum CaptionFormat
 public enum DocumentStatus
 {
     Uploaded,
+    Normalizing,
     NeedsReview,
     Ready,
     Stale,
@@ -78,6 +79,7 @@ public enum DocumentOutputStatus
 {
     Generated,
     Validated,
+    ValidationFailed,
     Failed,
     Stale
 }

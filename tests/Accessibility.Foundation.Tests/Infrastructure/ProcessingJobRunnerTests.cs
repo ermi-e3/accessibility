@@ -6,8 +6,10 @@ using Accessibility.Domain.Entities;
 using Accessibility.Domain.Enums;
 using Accessibility.Infrastructure.Persistence;
 using Accessibility.Infrastructure.Processing;
+using Accessibility.Infrastructure.Documents;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -53,6 +55,8 @@ public sealed class ProcessingJobRunnerTests
             new FakeMediaProcessingProvider(),
             new FakeTranscriptionProvider(),
             new FakeTranslationProvider(),
+            new UnexpectedDocumentJobExecutor(),
+            Options.Create(new DocumentProcessingOptions()),
             new FakeScheduler(),
             new ProcessingCancellationRegistry(),
             new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
@@ -76,6 +80,18 @@ public sealed class ProcessingJobRunnerTests
             asset.LessonId == source.LessonId && asset.Role == MediaAssetRole.OfflineAudio &&
             asset.Status == ResourceStatus.Ready));
     }
+}
+
+internal sealed class UnexpectedDocumentJobExecutor : IDocumentJobExecutor
+{
+    public string ProviderName(ProcessingJobType type) => "unexpected-document-provider";
+
+    public Task ExecuteAsync(
+        ProcessingJob job,
+        string workspace,
+        Func<int, Task> reportProgress,
+        CancellationToken cancellationToken) =>
+        throw new InvalidOperationException("Media tests must not execute a document job.");
 }
 
 internal sealed class FakeMediaProcessingProvider : IMediaProcessingProvider

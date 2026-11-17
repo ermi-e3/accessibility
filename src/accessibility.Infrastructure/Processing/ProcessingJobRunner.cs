@@ -6,10 +6,12 @@ using Accessibility.Application.Features.Processing;
 using Accessibility.Domain.Entities;
 using Accessibility.Domain.Enums;
 using Accessibility.Infrastructure.Persistence;
+using Accessibility.Infrastructure.Documents;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Accessibility.Infrastructure.Processing;
 
@@ -19,6 +21,8 @@ public sealed class ProcessingJobRunner(
     IMediaProcessingProvider mediaProcessor,
     ITranscriptionProvider transcriptionProvider,
     ITranslationProvider translationProvider,
+    IDocumentJobExecutor documentJobExecutor,
+    IOptions<DocumentProcessingOptions> documentProcessingOptions,
     IBackgroundJobScheduler scheduler,
     ProcessingCancellationRegistry cancellationRegistry,
     IServiceScopeFactory scopeFactory,
@@ -33,7 +37,10 @@ public sealed class ProcessingJobRunner(
         if (claim is null) return;
         var (job, attempt, leaseId) = claim.Value;
 
-        var workspace = Path.Combine(Path.GetTempPath(), "AccessLearn", "processing", job.Id.ToString("N"));
+        var workspaceRoot = job.Type is ProcessingJobType.NormalizeDocument or ProcessingJobType.GenerateDocumentOutputs
+            ? documentProcessingOptions.Value.WorkspaceRootPath
+            : Path.Combine(Path.GetTempPath(), "AccessLearn", "processing");
+        var workspace = Path.Combine(workspaceRoot, job.Id.ToString("N"));
         ProcessingCancellationRegistry.Registration? cancellation = null;
         CancellationTokenSource? executionCancellation = null;
         Task? heartbeat = null;
@@ -48,9 +55,19 @@ public sealed class ProcessingJobRunner(
             cancellationToken = executionCancellation.Token;
             heartbeat = RunLeaseHeartbeatAsync(job.Id, leaseId, executionCancellation, heartbeatState);
             if (await CancelIfRequestedAsync(job, attempt, leaseId)) return;
-            var payload = JsonSerializer.Deserialize<PrepareAccessibilityPayload>(job.PayloadJson ?? string.Empty)
-                ?? throw new FileContentInvalidException("Processing job payload is invalid.");
-            var source = await (
+            if (job.Type is ProcessingJobType.NormalizeDocument or ProcessingJobType.GenerateDocumentOutputs)
+            {
+                await documentJobExecutor.ExecuteAsync(
+                    job,
+                    workspace,
+                    progress => ReportProgressAsync(job, leaseId, progress),
+                    cancellationToken);
+            }
+            else
+            {
+                var payload = JsonSerializer.Deserialize<PrepareAccessibilityPayload>(job.PayloadJson ?? string.Empty)
+                    ?? throw new FileContentInvalidException("Processing job payload is invalid.");
+                var source = await (
                     from asset in database.MediaAssets
                     join file in database.StoredFiles on asset.StoredFileId equals file.Id
                     join lesson in database.Lessons on asset.LessonId equals lesson.Id
@@ -58,108 +75,109 @@ public sealed class ProcessingJobRunner(
                           file.Status == StoredFileStatus.Ready
                     select new { Asset = asset, File = file, Lesson = lesson })
                 .SingleAsync();
-            if (await CancelIfRequestedAsync(job, attempt, leaseId)) return;
+                if (await CancelIfRequestedAsync(job, attempt, leaseId)) return;
 
-            var sourcePath = Path.Combine(workspace, "source" + Path.GetExtension(source.File.OriginalFileName));
-            await using (var stored = await objectStorage.OpenReadAsync(source.File.ObjectKey, cancellationToken))
-            await using (var output = new FileStream(sourcePath, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, true))
-            {
-                await stored.Content.CopyToAsync(output, cancellationToken);
-            }
-            await ReportProgressAsync(job, leaseId, 15);
-
-            var prepared = await mediaProcessor.PrepareAsync(
-                sourcePath,
-                workspace,
-                source.Asset.Role == MediaAssetRole.PrimaryVideo,
-                cancellationToken);
-            if (await CancelIfRequestedAsync(job, attempt, leaseId)) return;
-            await PersistOfflineAudioAsync(job, source.Asset, source.Lesson, prepared, cancellationToken);
-            if (prepared.PosterPath is not null)
-            {
-                await PersistPosterAsync(job, source.Asset, source.Lesson, prepared.PosterPath, cancellationToken);
-            }
-            await ReportProgressAsync(job, leaseId, 35);
-
-            var sourceLanguage = source.Lesson.SourceLanguage;
-            Transcript? sourceTranscript;
-            ProviderTranscript providerTranscript;
-            if (payload.SourceTranscriptId.HasValue)
-            {
-                sourceTranscript = await database.Transcripts.SingleOrDefaultAsync(transcript =>
-                    transcript.Id == payload.SourceTranscriptId.Value &&
-                    transcript.ReviewStatus == ReviewStatus.Approved &&
-                    transcript.Version == payload.SourceTranscriptVersion &&
-                    transcript.SourceMediaAssetId == source.Asset.Id &&
-                    transcript.SourceMediaVersion == source.Asset.Version,
-                    cancellationToken)
-                    ?? throw new StateConflictException("The reviewed source transcript changed before translation.");
-                providerTranscript = await LoadProviderTranscriptAsync(sourceTranscript, cancellationToken);
-                if (Fingerprint(providerTranscript.Segments) != payload.SourceTranscriptFingerprint)
+                var sourcePath = Path.Combine(workspace, "source" + Path.GetExtension(source.File.OriginalFileName));
+                await using (var stored = await objectStorage.OpenReadAsync(source.File.ObjectKey, cancellationToken))
+                await using (var output = new FileStream(sourcePath, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, true))
                 {
-                    throw new StateConflictException("The reviewed source transcript content changed before translation.");
+                    await stored.Content.CopyToAsync(output, cancellationToken);
                 }
-            }
-            else
-            {
-                sourceTranscript = await database.Transcripts.SingleOrDefaultAsync(transcript =>
-                    transcript.ProcessingJobId == job.Id && transcript.Language == sourceLanguage,
+                await ReportProgressAsync(job, leaseId, 15);
+
+                var prepared = await mediaProcessor.PrepareAsync(
+                    sourcePath,
+                    workspace,
+                    source.Asset.Role == MediaAssetRole.PrimaryVideo,
                     cancellationToken);
-                if (sourceTranscript is null)
+                if (await CancelIfRequestedAsync(job, attempt, leaseId)) return;
+                await PersistOfflineAudioAsync(job, source.Asset, source.Lesson, prepared, cancellationToken);
+                if (prepared.PosterPath is not null)
                 {
-                    providerTranscript = await transcriptionProvider.TranscribeAsync(
-                        prepared.SpeechWavPath,
-                        sourceLanguage,
-                        cancellationToken);
-                    sourceTranscript = await PersistGeneratedTranscriptAsync(
-                        job,
-                        source.Asset,
-                        source.Lesson,
-                        providerTranscript.Language,
-                        providerTranscript.Segments,
-                        sourceTranscriptId: null,
-                        transcriptionProvider.Name,
-                        transcriptionProvider.Version,
-                        cancellationToken);
+                    await PersistPosterAsync(job, source.Asset, source.Lesson, prepared.PosterPath, cancellationToken);
+                }
+                await ReportProgressAsync(job, leaseId, 35);
+
+                var sourceLanguage = source.Lesson.SourceLanguage;
+                Transcript? sourceTranscript;
+                ProviderTranscript providerTranscript;
+                if (payload.SourceTranscriptId.HasValue)
+                {
+                    sourceTranscript = await database.Transcripts.SingleOrDefaultAsync(transcript =>
+                        transcript.Id == payload.SourceTranscriptId.Value &&
+                        transcript.ReviewStatus == ReviewStatus.Approved &&
+                        transcript.Version == payload.SourceTranscriptVersion &&
+                        transcript.SourceMediaAssetId == source.Asset.Id &&
+                        transcript.SourceMediaVersion == source.Asset.Version,
+                        cancellationToken)
+                        ?? throw new StateConflictException("The reviewed source transcript changed before translation.");
+                    providerTranscript = await LoadProviderTranscriptAsync(sourceTranscript, cancellationToken);
+                    if (Fingerprint(providerTranscript.Segments) != payload.SourceTranscriptFingerprint)
+                    {
+                        throw new StateConflictException("The reviewed source transcript content changed before translation.");
+                    }
                 }
                 else
                 {
-                    providerTranscript = await LoadProviderTranscriptAsync(sourceTranscript, cancellationToken);
+                    sourceTranscript = await database.Transcripts.SingleOrDefaultAsync(transcript =>
+                        transcript.ProcessingJobId == job.Id && transcript.Language == sourceLanguage,
+                        cancellationToken);
+                    if (sourceTranscript is null)
+                    {
+                        providerTranscript = await transcriptionProvider.TranscribeAsync(
+                            prepared.SpeechWavPath,
+                            sourceLanguage,
+                            cancellationToken);
+                        sourceTranscript = await PersistGeneratedTranscriptAsync(
+                            job,
+                            source.Asset,
+                            source.Lesson,
+                            providerTranscript.Language,
+                            providerTranscript.Segments,
+                            sourceTranscriptId: null,
+                            transcriptionProvider.Name,
+                            transcriptionProvider.Version,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        providerTranscript = await LoadProviderTranscriptAsync(sourceTranscript, cancellationToken);
+                    }
                 }
-            }
-            await ReportProgressAsync(job, leaseId, 70);
-            if (await CancelIfRequestedAsync(job, attempt, leaseId)) return;
+                await ReportProgressAsync(job, leaseId, 70);
+                if (await CancelIfRequestedAsync(job, attempt, leaseId)) return;
 
-            foreach (var targetLanguage in payload.TargetLanguages.Where(language => language != sourceLanguage))
-            {
-                if (await database.Transcripts.AnyAsync(transcript =>
-                        transcript.ProcessingJobId == job.Id && transcript.Language == targetLanguage))
+                foreach (var targetLanguage in payload.TargetLanguages.Where(language => language != sourceLanguage))
                 {
-                    continue;
-                }
+                    if (await database.Transcripts.AnyAsync(transcript =>
+                            transcript.ProcessingJobId == job.Id && transcript.Language == targetLanguage))
+                    {
+                        continue;
+                    }
 
-                var translated = await translationProvider.TranslateAsync(
-                    providerTranscript.Segments.Select(segment => segment.Text).ToArray(),
-                    sourceLanguage,
-                    targetLanguage,
-                    cancellationToken);
-                var translatedSegments = providerTranscript.Segments.Select((segment, index) =>
-                    new ProviderTranscriptSegment(
-                        index,
-                        segment.StartMilliseconds,
-                        segment.EndMilliseconds,
-                        translated[index],
-                        segment.SpeakerLabel)).ToArray();
-                await PersistGeneratedTranscriptAsync(
-                    job,
-                    source.Asset,
-                    source.Lesson,
-                    targetLanguage,
-                    translatedSegments,
-                    sourceTranscript.Id,
-                    translationProvider.Name,
-                    translationProvider.Version,
-                    cancellationToken);
+                    var translated = await translationProvider.TranslateAsync(
+                        providerTranscript.Segments.Select(segment => segment.Text).ToArray(),
+                        sourceLanguage,
+                        targetLanguage,
+                        cancellationToken);
+                    var translatedSegments = providerTranscript.Segments.Select((segment, index) =>
+                        new ProviderTranscriptSegment(
+                            index,
+                            segment.StartMilliseconds,
+                            segment.EndMilliseconds,
+                            translated[index],
+                            segment.SpeakerLabel)).ToArray();
+                    await PersistGeneratedTranscriptAsync(
+                        job,
+                        source.Asset,
+                        source.Lesson,
+                        targetLanguage,
+                        translatedSegments,
+                        sourceTranscript.Id,
+                        translationProvider.Name,
+                        translationProvider.Version,
+                        cancellationToken);
+                }
             }
 
             await ReportProgressAsync(job, leaseId, 95);
@@ -186,6 +204,7 @@ public sealed class ProcessingJobRunner(
             {
                 job.Cancel(timeProvider.GetUtcNow());
                 attempt.Cancel(timeProvider.GetUtcNow());
+                await FailCancelledNormalizationAsync(job);
                 await database.SaveChangesAsync(CancellationToken.None);
             }
         }
@@ -241,11 +260,14 @@ public sealed class ProcessingJobRunner(
             job.Requeue();
         }
 
-        job.Start(timeProvider.GetUtcNow(), transcriptionProvider.Name, job.ExternalJobId);
+        var provider = job.Type is ProcessingJobType.NormalizeDocument or ProcessingJobType.GenerateDocumentOutputs
+            ? documentJobExecutor.ProviderName(job.Type)
+            : transcriptionProvider.Name;
+        job.Start(timeProvider.GetUtcNow(), provider, job.ExternalJobId);
         var leaseId = Guid.CreateVersion7();
         job.AcquireLease(leaseId, timeProvider.GetUtcNow().AddMinutes(45));
         job.ReportProgress(5);
-        var attempt = new ProcessingJobAttempt(job.Id, job.Attempts, transcriptionProvider.Name, timeProvider.GetUtcNow());
+        var attempt = new ProcessingJobAttempt(job.Id, job.Attempts, provider, timeProvider.GetUtcNow());
         database.ProcessingJobAttempts.Add(attempt);
         await database.SaveChangesAsync();
         await transaction.CommitAsync();
@@ -325,7 +347,17 @@ public sealed class ProcessingJobRunner(
             attempt.Fail(code, message, timeProvider.GetUtcNow());
             await database.SaveChangesAsync(CancellationToken.None);
         }
-        if (IsTransient(exception) && job.Attempts < 4)
+        var shouldRetry = IsTransient(exception) && job.Attempts < 4;
+        if (!shouldRetry && job.Type == ProcessingJobType.NormalizeDocument && job.DocumentId.HasValue)
+        {
+            var document = await database.Documents.SingleOrDefaultAsync(item => item.Id == job.DocumentId.Value);
+            if (document is not null)
+            {
+                document.Fail();
+                await database.SaveChangesAsync(CancellationToken.None);
+            }
+        }
+        if (shouldRetry)
         {
             job.Requeue();
             await database.SaveChangesAsync(CancellationToken.None);
@@ -370,8 +402,20 @@ public sealed class ProcessingJobRunner(
         if (!job.IsCancellationRequested && job.Status != ProcessingJobStatus.Cancelled) return false;
         if (job.Status != ProcessingJobStatus.Cancelled) job.Cancel(timeProvider.GetUtcNow());
         attempt.Cancel(timeProvider.GetUtcNow());
+        await FailCancelledNormalizationAsync(job);
         await database.SaveChangesAsync(CancellationToken.None);
         return true;
+    }
+
+    private async Task FailCancelledNormalizationAsync(ProcessingJob job)
+    {
+        if (job.Type != ProcessingJobType.NormalizeDocument || !job.DocumentId.HasValue)
+        {
+            return;
+        }
+
+        var document = await database.Documents.SingleOrDefaultAsync(item => item.Id == job.DocumentId.Value);
+        document?.Fail();
     }
 
     private async Task PersistOfflineAudioAsync(

@@ -32,6 +32,10 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("IssueSummaryJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("issue_summary_json");
+
                     b.Property<string>("Language")
                         .IsRequired()
                         .HasMaxLength(35)
@@ -42,9 +46,18 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("lesson_id");
 
+                    b.Property<DateTimeOffset?>("NormalizedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("normalized_at");
+
                     b.Property<Guid?>("NormalizedModelFileId")
                         .HasColumnType("uuid")
                         .HasColumnName("normalized_model_file_id");
+
+                    b.Property<string>("NormalizerVersion")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("normalizer_version");
 
                     b.Property<Guid>("SourceFileId")
                         .HasColumnType("uuid")
@@ -181,19 +194,48 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_decorative");
 
+                    b.Property<string>("RelationshipId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("relationship_id");
+
                     b.Property<string>("ReviewStatus")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("review_status");
 
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by_user_id");
+
                     b.Property<int>("Sequence")
                         .HasColumnType("integer")
                         .HasColumnName("sequence");
 
+                    b.Property<string>("SourceLocation")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("source_location");
+
                     b.Property<Guid>("StoredFileId")
                         .HasColumnType("uuid")
                         .HasColumnName("stored_file_id");
+
+                    b.Property<string>("SuggestedAltText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("suggested_alt_text");
+
+                    b.Property<bool>("SuggestedDecorative")
+                        .HasColumnType("boolean")
+                        .HasColumnName("suggested_decorative");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -207,14 +249,23 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("p_k_document_images");
 
+                    b.HasIndex("ReviewedByUserId")
+                        .HasDatabaseName("i_x_document_images_reviewed_by_user_id");
+
                     b.HasIndex("StoredFileId")
                         .HasDatabaseName("i_x_document_images_stored_file_id");
+
+                    b.HasIndex("DocumentId", "RelationshipId")
+                        .HasDatabaseName("i_x_document_images_document_id_relationship_id");
 
                     b.HasIndex("DocumentId", "Sequence")
                         .IsUnique()
                         .HasDatabaseName("i_x_document_images_document_id_sequence");
 
-                    b.ToTable("document_images");
+                    b.ToTable("document_images", t =>
+                        {
+                            t.HasCheckConstraint("ck_document_images_approved_alternative", "review_status <> 'Approved' OR (reviewed_by_user_id IS NOT NULL AND reviewed_at IS NOT NULL AND ((is_decorative AND alt_text IS NULL) OR (NOT is_decorative AND alt_text IS NOT NULL AND length(btrim(alt_text)) > 0)))");
+                        });
                 });
 
             modelBuilder.Entity("Accessibility.Domain.Entities.DocumentOutput", b =>
@@ -261,9 +312,32 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<DateTimeOffset?>("ValidatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("validated_at");
+
+                    b.Property<string>("ValidationProfile")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("validation_profile");
+
                     b.Property<Guid?>("ValidationReportFileId")
                         .HasColumnType("uuid")
                         .HasColumnName("validation_report_file_id");
+
+                    b.Property<string>("ValidationSummaryJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("validation_summary_json");
+
+                    b.Property<string>("ValidatorName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("validator_name");
+
+                    b.Property<string>("ValidatorVersion")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("validator_version");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
@@ -286,6 +360,8 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                     b.ToTable("document_outputs", t =>
                         {
                             t.HasCheckConstraint("ck_document_outputs_source_revision", "source_revision > 0");
+
+                            t.HasCheckConstraint("ck_document_outputs_validation_provenance", "status NOT IN ('Validated', 'ValidationFailed', 'Failed') OR (validation_report_file_id IS NOT NULL AND validator_name IS NOT NULL AND validator_version IS NOT NULL AND validation_profile IS NOT NULL AND validation_summary_json IS NOT NULL AND validated_at IS NOT NULL)");
                         });
                 });
 
@@ -1637,6 +1713,12 @@ namespace Accessibility.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_document_images_documents_document_id");
+
+                    b.HasOne("Accessibility.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("f_k_document_images_asp_net_users_reviewed_by_user_id");
 
                     b.HasOne("Accessibility.Domain.Entities.StoredFile", null)
                         .WithMany()
